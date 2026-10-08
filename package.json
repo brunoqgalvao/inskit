@@ -1,6 +1,6 @@
 {
   "name": "inskit",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "type": "module",
   "description": "inskit for Codex: a real browser with your logins, a vault for cards and passwords, and a purchase gate.",
@@ -16,7 +16,8 @@
     "e2e": "node --no-warnings --import tsx test/e2e.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "cli": "node --no-warnings --import tsx src/cli.ts",
-    "install:codex": "npm run build && codex plugin marketplace add . && codex plugin add inskit@inskit-local"
+    "install:codex": "npm run build && codex plugin marketplace add . && codex plugin add inskit@inskit",
+    "service:dev": "node scripts/service-dev.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.31.0",

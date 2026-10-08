@@ -1,6 +1,6 @@
 {
   "name": "inskit",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "A logged-in browser for Codex, a vault for cards and passwords it never sees, and approval before anything is bought. Free cloud browser included.",
   "author": {
     "name": "Bruno Galvão"

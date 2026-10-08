@@ -16,6 +16,7 @@ import { BrowserUseCloud } from './browser-use.ts';
 const HELP = `${BRAND} for Codex ${VERSION}
 
   inskit status                      Browser, logins and vault status
+  inskit check                       Prove it works: open example.com in the agent browser and print the title
   inskit open                        Open the home page (add cards, ID, see purchases)
   inskit browsers                    Browsers and profiles logins can be imported from
   inskit logins import [--sites a.com,b.com | --all] [--browser chrome] [--profile "Work"]
@@ -50,6 +51,20 @@ const [cmd, sub, arg] = positionals;
 try {
   if (!cmd || values.help) console.log(HELP);
   else if (cmd === 'status') print(await client.call(session, 'agent_status', {}));
+  else if (cmd === 'check') {
+    const started = Date.now();
+    const text = (r: { content: { type: string; text?: string }[] }) => r.content.map(c => c.text ?? '').join('\n');
+    const nav = await client.call(session, 'browser_navigate', { url: 'https://example.com' }, { timeoutMs: 180_000 });
+    const title = text(nav).match(/^Title: (.*)$/m)?.[1];
+    const mode = text(await client.call(session, 'agent_status', {})).match(/^Agent browser: .*?\((.*)\)$/m)?.[1] ?? 'unknown browser';
+    if (nav.isError || title !== 'Example Domain') {
+      console.error('inskit check failed (' + mode + '): ' + text(nav).split('\n')[0]);
+      process.exitCode = 1;
+    } else {
+      console.log('inskit works: opened example.com ("' + title + '") in ' + mode + ' in ' + ((Date.now() - started) / 1000).toFixed(1) + 's.');
+      console.log('Restart Codex (or open a new chat) and ask @inskit for a task.');
+    }
+  }
   else if (cmd === 'open') { await client.ensure(); await openInBrowser(cfg.publicUrl + '/'); console.log(cfg.publicUrl + '/'); }
   else if (cmd === 'browsers') {
     const found = detectBrowsers();

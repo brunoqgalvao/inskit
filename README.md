@@ -17,7 +17,9 @@ or by hand:
     codex plugin marketplace add brunoqgalvao/inskit
     codex plugin add inskit@inskit
 
-Restart Codex and ask: *"@inskit download my last 3 invoices from my phone carrier"*. Requirements: Codex (app or CLI) on macOS or Linux. Node and Playwright ship inside the plugin.
+The installer also puts an `inskit` command in `~/.local/bin` and runs `inskit check`, which opens example.com in the agent browser to prove it works. Restart Codex and ask: *"@inskit download my last 3 invoices from my phone carrier"*. Requirements: Codex (app or CLI) on macOS or Linux. Node and Playwright ship inside the plugin.
+
+Setting this up with a coding agent? Point it at [AGENTS.md](AGENTS.md). Running your own cloud browser service: [docs/self-host.md](docs/self-host.md).
 
 ## Where the browser runs
 
@@ -53,7 +55,7 @@ The shim starts the daemon on first use and replaces it when a newer plugin buil
 
 The CLI ships inside the plugin: `node ~/.codex/plugins/cache/inskit/inskit/<version>/dist/cli.js`.
 
-    inskit status | open | browsers | stop
+    inskit status | check | open | browsers | stop
     inskit cloud status | forget
     inskit logins import [--sites a.com,b.com | --all] [--browser chrome] [--profile "Work"]
     inskit logins push <ssh-host> [--sites a.com,b.com | --all] [--cdp http://127.0.0.1:9222]
@@ -75,6 +77,15 @@ The CLI ships inside the plugin: `node ~/.codex/plugins/cache/inskit/inskit/<ver
 | `INSTINCT_CHROME_PROFILE`, `INSTINCT_CHROME_PATH` | – | Which profile to copy logins from; browser binary |
 | `INSKIT_LUNA_BASE_URL` / `ANTHROPIC_API_KEY` | – | Optional inner model for unclear login pages and `browser_delegate` (an OpenAI-compatible Responses endpoint, or Claude Haiku). Off when neither is set |
 | `INSTINCT_PORT`, `INSTINCT_HOME` | 17700, `~/.instinct` | |
+
+## Troubleshooting
+
+- **`inskit check` fails with a limit message.** The free cloud browser has daily limits per install and a global budget. Wait for the reset at 00:00 UTC, use your own Browser Use key, or switch to local Chrome with `{"INSTINCT_BROWSER_PROVIDER": "local"}` in `~/.instinct/config.json`.
+- **@inskit tools do not show up in Codex.** Plugins load in new chats: restart Codex or open a new chat. `codex plugin list` should show `inskit@inskit`.
+- **"Could not start a browser" in local mode.** Install Google Chrome, or set `INSTINCT_CHROME_PATH`.
+- **Keychain prompt in local mode.** Choose "Always Allow" for "<Browser> Safe Storage" so later login imports stay silent.
+- **Logged out on a site after importing logins.** Some sites bind a session to one browser; sign in once in the agent browser (`browser_hand_over` gives the live view in cloud mode) and it persists.
+- **Anything else.** `~/.instinct/daemon.log` has the details. `inskit stop` restarts the background service on next use.
 
 ## Security model, honestly
 
@@ -99,7 +110,7 @@ Report vulnerabilities privately, see [SECURITY.md](SECURITY.md).
     npm run build        # bundles plugin/dist and vendors playwright-core
 
     cd service && npm install
-    echo "BROWSER_USE_API_KEY=..." > .dev.vars && npx wrangler dev --port 8790
-    INSTINCT_HOSTED_URL=http://127.0.0.1:8790 node --import tsx test/hosted-live.ts
+    echo "BROWSER_USE_API_KEY=..." > .dev.vars && npx wrangler dev --port 8795
+    INSTINCT_HOSTED_URL=http://127.0.0.1:8795 node --import tsx test/hosted-live.ts
 
 The login flow, two-factor challenges and verification are described in [docs/login.md](docs/login.md).

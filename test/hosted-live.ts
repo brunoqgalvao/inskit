@@ -1,5 +1,5 @@
 // Manual end-to-end check of the free hosted cloud browser from a fresh install (no key, empty home).
-//   INSTINCT_HOSTED_URL=http://127.0.0.1:8790 node --import tsx test/hosted-live.ts
+//   INSTINCT_HOSTED_URL=http://127.0.0.1:8795 node --import tsx test/hosted-live.ts
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
