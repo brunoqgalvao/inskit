@@ -1,0 +1,35 @@
+{
+  "name": "inskit",
+  "version": "0.2.0",
+  "description": "A logged-in browser for Codex, a vault for cards and passwords it never sees, and approval before anything is bought. Free cloud browser included.",
+  "author": {
+    "name": "Bruno Galvão"
+  },
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "extensions": {
+    "com.openai": {
+      "onboardingSkill": "./skills/inskit-setup/SKILL.md"
+    }
+  },
+  "interface": {
+    "displayName": "inskit",
+    "shortDescription": "Browse, log in, fill forms and buy things for you",
+    "longDescription": "Gives Codex its own browser: a free hosted cloud browser by default, your own Browser Use account, or Chrome on your computer with logins copied from your everyday browser. Cards, passwords and ID numbers go into an encrypted vault on your computer through one-time pages; Codex can type them into the right field but never sees them. Purchases stop at checkout until you approve the exact items, total, address and card.",
+    "developerName": "Bruno Galvão",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "composerIcon": "./assets/icon.svg",
+    "logo": "./assets/icon.svg",
+    "logoDark": "./assets/icon.svg",
+    "defaultPrompt": [
+      "@inskit buy more of the coffee capsules I ordered last time",
+      "@inskit download my last 3 invoices from my phone carrier",
+      "@inskit find a hotel in Lisbon for next weekend under $200 a night"
+    ]
+  }
+}

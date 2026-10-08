@@ -1,0 +1,32 @@
+# Hosted cloud browsers + landing page + install script.
+# Secret: BROWSER_USE_API_KEY  (wrangler secret put BROWSER_USE_API_KEY)
+# Pause new browsers without a code change: set SERVICE_ENABLED = "0" and deploy, or override in the dashboard.
+name = "inskit"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+[assets]
+directory = "public"
+binding = "ASSETS"
+not_found_handling = "404-page"
+
+[vars]
+SERVICE_ENABLED = "1"
+DAILY_BUDGET_USD = "10"
+INSTALL_DAILY_USD = "0.5"
+INSTALL_DAILY_MINUTES = "60"
+MAX_ACTIVE = "10"
+MAX_SESSION_MINUTES = "30"
+INSTALLS_PER_IP_PER_DAY = "5"
+
+[triggers]
+crons = ["*/10 * * * *"]
+
+[[durable_objects.bindings]]
+name = "LEDGER"
+class_name = "Ledger"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Ledger"]

@@ -1,0 +1,52 @@
+{
+  "mcpServers": {
+    "inskit": {
+      "command": "/bin/sh",
+      "args": [
+        "-c",
+        "exec \"${CODEX_MCP_NODE_PATH:-node}\" --no-warnings ./dist/server.js \"$@\"",
+        "--"
+      ],
+      "cwd": ".",
+      "env_vars": [
+        "PATH",
+        "HOME",
+        "USER",
+        "LANG",
+        "TMPDIR",
+        "CODEX_MCP_NODE_PATH",
+        "DISPLAY",
+        "WAYLAND_DISPLAY",
+        "XDG_RUNTIME_DIR",
+        "DBUS_SESSION_BUS_ADDRESS",
+        "INSTINCT_HOME",
+        "INSTINCT_PORT",
+        "INSTINCT_HOST",
+        "INSTINCT_PUBLIC_URL",
+        "INSTINCT_CDP_URL",
+        "INSTINCT_HEADLESS",
+        "INSTINCT_CHROME_PATH",
+        "INSTINCT_BROWSER_CHANNEL",
+        "INSTINCT_COOKIE_SYNC",
+        "INSTINCT_OPEN_LINKS",
+        "INSTINCT_CHROME_PROFILE",
+        "INSTINCT_DOWNLOADS",
+        "INSTINCT_DEBUG_PORT",
+        "INSTINCT_NATIVE_APPROVAL",
+        "INSTINCT_APPROVAL",
+        "INSTINCT_BROWSER_IDLE_MIN",
+        "INSTINCT_BRAND",
+        "BROWSER_USE_API_KEY",
+        "INSTINCT_BROWSER_PROVIDER",
+        "INSTINCT_BROWSER_USE_KEY_FILE",
+        "INSTINCT_PROXY_COUNTRY",
+        "INSTINCT_HOSTED_URL",
+        "INSKIT_LUNA_BASE_URL",
+        "INSKIT_LUNA_MODEL",
+        "INSKIT_LOGIN_FALLBACK",
+        "INSKIT_DELEGATE_MODEL"
+      ],
+      "tool_timeout_sec": 300
+    }
+  }
+}

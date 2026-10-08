@@ -1,0 +1,38 @@
+{
+  "name": "inskit",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "inskit for Codex: a real browser with your logins, a vault for cards and passwords, and a purchase gate.",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "bin": {
+    "inskit": "plugin/dist/cli.js"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --no-warnings --import tsx --test --test-timeout=60000 test/*.test.ts",
+    "e2e": "node --no-warnings --import tsx test/e2e.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "cli": "node --no-warnings --import tsx src/cli.ts",
+    "install:codex": "npm run build && codex plugin marketplace add . && codex plugin add inskit@inskit-local"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.31.0",
+    "playwright-core": "^1.63.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.0",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  },
+  "license": "Apache-2.0",
+  "homepage": "https://inskit.justmade.page",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/brunoqgalvao/inskit.git"
+  }
+}

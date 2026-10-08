@@ -1,0 +1,20 @@
+# Agent inbox for your domain. The zone's Email Routing catch-all delivers to this script name,
+# so the inbox keeps the old agent-mail worker name. Mail is kept 30 days in a SQLite Durable Object.
+name = "agent-mail-email-worker"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+[vars]
+DOMAIN = "example.com"  # your Email Routing domain
+
+[[durable_objects.bindings]]
+name = "INBOX"
+class_name = "Inbox"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Inbox"]
+
+# Secret: INBOX_TOKEN (bearer for GET /v1/messages). Set with: wrangler secret put INBOX_TOKEN
+
