@@ -64,6 +64,8 @@ export class Ledger extends DurableObject<Env> {
     this.sql.exec('create table if not exists sessions (id text primary key, install_id text not null, started_at integer not null, timeout_at integer not null, finished_at integer, cost_usd real not null default 0, proxy_mb real not null default 0)');
     this.sql.exec('create index if not exists sessions_install on sessions (install_id, started_at)');
     this.sql.exec('create index if not exists sessions_open on sessions (finished_at)');
+    // Provider costs (proxy traffic above all) are finalized minutes after a browser stops; recheck until final.
+    try { this.sql.exec('alter table sessions add column final integer not null default 0'); } catch { /* already there */ }
   }
 
   private async api(method: string, path: string, body?: unknown) {
@@ -124,9 +126,23 @@ export class Ledger extends DurableObject<Env> {
     await this.settle(s, true);
   }
 
-  /** Cron: settle sessions that passed their timeout or that the user's daemon never stopped. */
+  /**
+   * Cron: settle sessions that passed their timeout or that the user's daemon never stopped, and refresh the cost
+   * of recently closed ones until the provider has finished billing them (15 minutes after they stop).
+   */
   async reconcile() {
     for (const s of this.openSessions()) if (s.timeout_at <= Date.now() + 60_000) await this.settle(s);
+    const closed = this.sql.exec('select * from sessions where finished_at is not null and final = 0 limit 200').toArray() as unknown as Session[];
+    for (const s of closed) {
+      try {
+        const b = await this.api('GET', '/browsers/' + encodeURIComponent(s.id));
+        const cost = Number(b.browserCost ?? 0) + Number(b.proxyCost ?? 0);
+        const final = Date.now() - (s.finished_at ?? 0) > 15 * 60_000 ? 1 : 0;
+        this.sql.exec('update sessions set cost_usd = max(cost_usd, ?), proxy_mb = max(proxy_mb, ?), final = ? where id = ?', cost, Number(b.proxyUsedMb ?? 0), final, s.id);
+      } catch {
+        if (Date.now() - (s.finished_at ?? 0) > 60 * 60_000) this.sql.exec('update sessions set final = 1 where id = ?', s.id);
+      }
+    }
   }
 
   private usage(installId?: string) {
@@ -164,7 +180,8 @@ export class Ledger extends DurableObject<Env> {
     const lim = limits(this.env);
     // One browser per install: a new start replaces the previous one.
     for (const s of this.openSessions(inst.id)) await this.stopSession(s);
-    await this.reconcile();
+    // Only expired open sessions here; refreshing closed sessions' costs is the cron's job and would slow a start.
+    for (const s of this.openSessions()) if (s.timeout_at <= Date.now()) await this.settle(s);
     const mine = this.usage(inst.id), all = this.usage();
     if (mine.minutes >= lim.installDailyMinutes || mine.usd >= lim.installDailyUsd)
       return fail(429, 'install_quota', 'Daily free limit reached (' + lim.installDailyMinutes + ' browser minutes). It resets at 00:00 UTC.');
