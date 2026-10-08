@@ -261,7 +261,14 @@ export class AgentBrowser {
     const page = await this.page(session);
     const target = /^[a-z]+:\/\//i.test(url) ? url : `https://${url}`;
     const note = await this.beforeNavigate?.(target).catch(error => `(could not import logins: ${error instanceof Error ? error.message : error})`);
-    await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+    // A cloud browser's proxy can refuse the first connections right after start; those errors are safe to retry.
+    for (let attempt = 0; ; attempt++) {
+      try { await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 45_000 }); break; }
+      catch (error) {
+        if (attempt >= 2 || !/ERR_(TUNNEL_CONNECTION_FAILED|PROXY_CONNECTION_FAILED|SOCKS_CONNECTION_FAILED)/.test(String(error))) throw error;
+        await page.waitForTimeout(1500 * (attempt + 1));
+      }
+    }
     await this.settle(page);
     return (note ? note + '\n' : '') + (await this.snapshot(session));
   }

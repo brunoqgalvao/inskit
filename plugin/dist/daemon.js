@@ -25,8 +25,8 @@ import { existsSync, readFileSync } from "node:fs";
 
 // src/brand.ts
 var BRAND = process.env.INSTINCT_BRAND || "inskit";
-var VERSION = "0.2.0";
-var BUILD_ID = true ? "1791425548533" : "dev";
+var VERSION = "0.2.1";
+var BUILD_ID = true ? "1791426017824" : "dev";
 
 // src/config.ts
 function expandHome(path) {
@@ -1316,7 +1316,15 @@ Title: ${await page.title().catch(() => "")}
     const page = await this.page(session);
     const target = /^[a-z]+:\/\//i.test(url2) ? url2 : `https://${url2}`;
     const note = await this.beforeNavigate?.(target).catch((error62) => `(could not import logins: ${error62 instanceof Error ? error62.message : error62})`);
-    await page.goto(target, { waitUntil: "domcontentloaded", timeout: 45e3 });
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await page.goto(target, { waitUntil: "domcontentloaded", timeout: 45e3 });
+        break;
+      } catch (error62) {
+        if (attempt >= 2 || !/ERR_(TUNNEL_CONNECTION_FAILED|PROXY_CONNECTION_FAILED|SOCKS_CONNECTION_FAILED)/.test(String(error62))) throw error62;
+        await page.waitForTimeout(1500 * (attempt + 1));
+      }
+    }
     await this.settle(page);
     return (note ? note + "\n" : "") + await this.snapshot(session);
   }
