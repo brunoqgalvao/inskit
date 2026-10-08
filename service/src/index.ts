@@ -15,6 +15,8 @@ type Env = {
   MAX_ACTIVE?: string;
   MAX_SESSION_MINUTES?: string;
   INSTALLS_PER_IP_PER_DAY?: string;
+  /** Bearer token for GET /v1/stats (wrangler secret put ADMIN_TOKEN). */
+  ADMIN_TOKEN?: string;
 };
 
 type Session = { id: string; install_id: string; started_at: number; timeout_at: number; finished_at: number | null; cost_usd: number; proxy_mb: number };
@@ -208,6 +210,25 @@ export class Ledger extends DurableObject<Env> {
     this.sql.exec('update installs set profile_id = null, blocked = 1, token_hash = ? where id = ?', 'deleted:' + inst.id, inst.id);
     return json({ ok: true });
   }
+
+  /** Operator view: installs, open browsers and today's spend against the budget. */
+  async stats() {
+    const lim = limits(this.env);
+    const today = this.usage();
+    const since = dayStart();
+    const count = (q: string, ...a: unknown[]) => this.sql.exec(q, ...a).one().n as number;
+    return json({
+      installs_total: count('select count(*) as n from installs'),
+      installs_today: count('select count(*) as n from installs where created_at >= ?', since),
+      active_installs_today: count('select count(distinct install_id) as n from sessions where started_at >= ?', since),
+      sessions_today: count('select count(*) as n from sessions where started_at >= ?', since),
+      open_browsers: this.openSessions().length,
+      today_usd: Number(today.usd.toFixed(4)),
+      today_minutes: Math.round(today.minutes),
+      budget_usd: lim.dailyBudget,
+      proxy_mb_today: Number((this.sql.exec('select coalesce(sum(proxy_mb), 0) as n from sessions where started_at >= ?', since).one().n as number).toFixed(1)),
+    });
+  }
 }
 
 const ledger = (env: Env) => env.LEDGER.get(env.LEDGER.idFromName('main'));
@@ -225,6 +246,10 @@ async function route(req: Request, env: Env, url: URL): Promise<Response> {
   if (path === '/v1/health') return json({ ok: true, enabled: env.SERVICE_ENABLED !== '0' });
   if (path === '/v1/installs' && req.method === 'POST') return l.register(await sha256('ip:' + (req.headers.get('cf-connecting-ip') ?? 'unknown')));
   const token = bearer(req);
+  if (path === '/v1/stats' && req.method === 'GET') {
+    if (!env.ADMIN_TOKEN || (await sha256(token)) !== (await sha256(env.ADMIN_TOKEN))) return fail(401, 'unauthorized', 'Admin token required.');
+    return l.stats();
+  }
   if (!token.startsWith('ik_')) return fail(401, 'unauthorized', 'Missing install token.');
   if (path === '/v1/me' && req.method === 'GET') return l.me(token);
   if (path === '/v1/me' && req.method === 'DELETE') return l.forget(token);
