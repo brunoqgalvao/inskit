@@ -4,7 +4,7 @@
 
 ## Install (macOS or Linux, needs Codex)
 
-    curl -fsSL https://inskit.justmade.page/install.sh | sh
+    curl -fsSL https://inskit.agenturl.dev/install.sh | sh
 
 The installer adds the plugin to Codex, writes the `inskit` CLI to ~/.local/bin and runs `inskit check`. To prove it works with a screenshot:
 

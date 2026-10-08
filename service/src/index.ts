@@ -287,6 +287,8 @@ export default {
   async fetch(req: Request, env: Env) {
     const url = new URL(req.url);
     if (url.pathname.startsWith('/v1/')) return api(req, env, url);
+    // The website lives on AgentURL; this host keeps the API, the installer and llms.txt for older links.
+    if (url.pathname === '/' || url.pathname === '/index.html') return Response.redirect('https://inskit.agenturl.dev/', 301);
     return env.ASSETS.fetch(req);
   },
   async scheduled(_controller: ScheduledController, env: Env) {

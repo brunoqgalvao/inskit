@@ -2,7 +2,7 @@
 
 **Let Codex get things done on real websites**: log in, fill forms, compare and buy, book, download invoices and statements.
 
-[Website](https://inskit.justmade.page) · Apache-2.0 · macOS and Linux
+[Website](https://inskit.agenturl.dev) · Apache-2.0 · macOS and Linux
 
 - **A browser that stays logged in.** Codex gets its own browser. By default it runs in the cloud on a free hosted service, so nothing opens on your machine. You can also use your own [Browser Use](https://browser-use.com) key or Chrome on your computer, which copies each site's logins from your everyday browser (Chrome, Arc, Brave, Edge or Chromium) the first time Codex visits it.
 - **A vault Codex never sees.** Cards, passwords and ID numbers are typed by you into one-time local pages and stored encrypted on your computer. Codex can ask the vault to type a value into a field; the value never appears in what the model reads.
@@ -10,7 +10,7 @@
 
 ## Install
 
-    curl -fsSL https://inskit.justmade.page/install.sh | sh
+    curl -fsSL https://inskit.agenturl.dev/install.sh | sh
 
 or by hand:
 

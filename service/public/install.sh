@@ -47,7 +47,7 @@ cat > "$BIN_DIR/inskit" <<'SHIM'
 set -eu
 base="${CODEX_HOME:-$HOME/.codex}/plugins/cache/inskit/inskit"
 cli=$(ls -d "$base"/*/dist/cli.js 2>/dev/null | sort -V | tail -n 1)
-[ -n "$cli" ] || { echo "inskit is not installed. Run: curl -fsSL https://inskit.justmade.page/install.sh | sh" >&2; exit 1; }
+[ -n "$cli" ] || { echo "inskit is not installed. Run: curl -fsSL https://inskit.agenturl.dev/install.sh | sh" >&2; exit 1; }
 for n in "${CODEX_MCP_NODE_PATH:-}" /Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node "$(command -v node 2>/dev/null || true)"; do
   if [ -n "$n" ] && [ -x "$n" ] && "$n" -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit(a>22||(a===22&&b>=13)?0:1)' 2>/dev/null; then
     exec "$n" --no-warnings "$cli" "$@"
