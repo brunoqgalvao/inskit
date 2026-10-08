@@ -4,7 +4,7 @@
 
     curl -fsSL https://inskit.justmade.page/install.sh | sh
 
-This adds the plugin to Codex, writes an `inskit` command to `~/.local/bin` and runs `inskit check`, which opens https://example.com in the agent browser and prints the title. No account or key is needed: the free hosted cloud browser is the default. Codex loads the plugin in new chats only, so in the session that installed it, prove it works with `inskit check` rather than the @inskit tools.
+This adds the plugin to Codex, writes an `inskit` command to `~/.local/bin` and runs `inskit check`, which opens https://example.com in the agent browser and prints the title. No account or key is needed: the free hosted cloud browser is the default. Codex loads the plugin in new chats only, so in the session that installed it, prove it works with `inskit check --screenshot proof.jpg`, which prints the page title and saves a screenshot, rather than the @inskit tools.
 
 ## Working on this repository
 

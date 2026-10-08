@@ -30,7 +30,7 @@ Set `INSTINCT_HOSTED_URL` to your URL on each machine, or change `HOSTED_URL` in
 
 ## Limits and operations
 
-Limits are Worker variables in `wrangler.toml`: `INSTALL_DAILY_MINUTES` (60), `INSTALL_DAILY_USD` (0.5), `MAX_SESSION_MINUTES` (30), `MAX_ACTIVE` (10), `DAILY_BUDGET_USD` (10), `INSTALLS_PER_IP_PER_DAY` (5). `SERVICE_ENABLED = "0"` pauses new browsers.
+Limits are Worker variables in `wrangler.toml`: `INSTALL_DAILY_MINUTES` (60), `INSTALL_DAILY_USD` (0.5), `MAX_SESSION_MINUTES` (30), `MAX_ACTIVE` (10), `DAILY_BUDGET_USD` (10), `INSTALLS_PER_IP_PER_DAY` (20). `SERVICE_ENABLED = "0"` pauses new browsers.
 
     curl -s https://<your-host>/v1/stats -H "authorization: Bearer $(cat ~/.config/inskit-admin-token)"
 

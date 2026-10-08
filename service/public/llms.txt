@@ -1,0 +1,20 @@
+# inskit
+
+> Open-source Codex plugin: a browser that stays logged in, a vault for cards and passwords the model never sees, and approval before anything is bought. A free hosted cloud browser is the default, so no account or API key is needed.
+
+## Install (macOS or Linux, needs Codex)
+
+    curl -fsSL https://inskit.justmade.page/install.sh | sh
+
+The installer adds the plugin to Codex, writes the `inskit` CLI to ~/.local/bin and runs `inskit check`. To prove it works with a screenshot:
+
+    ~/.local/bin/inskit check --screenshot proof.jpg
+
+Codex loads plugins in new chats only; after installing, ask in a new chat: "@inskit download my last invoice from my phone carrier".
+
+## Links
+
+- Repository and README: https://github.com/brunoqgalvao/inskit
+- Notes for coding agents: https://github.com/brunoqgalvao/inskit/blob/main/AGENTS.md
+- Run your own cloud browser service: https://github.com/brunoqgalvao/inskit/blob/main/docs/self-host.md
+- Settings: ~/.instinct/config.json (same names as the environment variables in the README)

@@ -1,6 +1,6 @@
 {
   "name": "inskit",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "type": "module",
   "description": "inskit for Codex: a real browser with your logins, a vault for cards and passwords, and a purchase gate.",

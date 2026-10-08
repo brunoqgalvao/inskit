@@ -35,7 +35,7 @@ export function limits(env: Partial<Env>) {
     installDailyMinutes: n(env.INSTALL_DAILY_MINUTES, 60),
     maxActive: n(env.MAX_ACTIVE, 10),
     maxSessionMinutes: n(env.MAX_SESSION_MINUTES, 30),
-    installsPerIp: n(env.INSTALLS_PER_IP_PER_DAY, 5),
+    installsPerIp: n(env.INSTALLS_PER_IP_PER_DAY, 20),
   };
 }
 

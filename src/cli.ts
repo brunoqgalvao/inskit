@@ -9,6 +9,7 @@ import { pushLogins } from './push.ts';
 import { openInBrowser } from './service.ts';
 import { BRAND, VERSION } from './brand.ts';
 import { join } from 'node:path';
+import { writeFileSync } from 'node:fs';
 import { Db } from './db.ts';
 import { allRecipes, BUILT_IN } from './login/recipes.ts';
 import { BrowserUseCloud } from './browser-use.ts';
@@ -16,7 +17,7 @@ import { BrowserUseCloud } from './browser-use.ts';
 const HELP = `${BRAND} for Codex ${VERSION}
 
   inskit status                      Browser, logins and vault status
-  inskit check                       Prove it works: open example.com in the agent browser and print the title
+  inskit check [--screenshot f.jpg]  Prove it works: open example.com in the agent browser, print the title, optionally save a screenshot
   inskit open                        Open the home page (add cards, ID, see purchases)
   inskit browsers                    Browsers and profiles logins can be imported from
   inskit logins import [--sites a.com,b.com | --all] [--browser chrome] [--profile "Work"]
@@ -34,7 +35,7 @@ const { positionals, values } = parseArgs({
   allowPositionals: true,
   options: {
     sites: { type: 'string' }, all: { type: 'boolean' }, browser: { type: 'string' }, profile: { type: 'string' },
-    cdp: { type: 'string', default: 'http://127.0.0.1:9222' }, help: { type: 'boolean', short: 'h' },
+    cdp: { type: 'string', default: 'http://127.0.0.1:9222' }, help: { type: 'boolean', short: 'h' }, screenshot: { type: 'string' },
   },
 });
 
@@ -62,6 +63,11 @@ try {
       process.exitCode = 1;
     } else {
       console.log('inskit works: opened example.com ("' + title + '") in ' + mode + ' in ' + ((Date.now() - started) / 1000).toFixed(1) + 's.');
+      if (values.screenshot) {
+        const shot = await client.call(session, 'browser_screenshot', {}) as { content: { type: string; data?: string }[] };
+        const data = shot.content.find(c => c.type === 'image')?.data;
+        if (data) { writeFileSync(values.screenshot, Buffer.from(data, 'base64')); console.log('Screenshot: ' + values.screenshot); }
+      }
       console.log('Restart Codex (or open a new chat) and ask @inskit for a task.');
     }
   }

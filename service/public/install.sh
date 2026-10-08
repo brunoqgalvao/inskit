@@ -69,7 +69,7 @@ echo
 echo "  @inskit download my last invoice from my phone carrier"
 echo
 case ":$PATH:" in
-  *":$BIN_DIR:"*) echo "Terminal: inskit status | inskit check | inskit cloud status" ;;
+  *":$BIN_DIR:"*) echo "Terminal: inskit status | inskit check --screenshot proof.jpg | inskit cloud status" ;;
   *) echo "Terminal: $BIN_DIR/inskit status  (add $BIN_DIR to your PATH to type just 'inskit')" ;;
 esac
 echo "Settings live in ~/.instinct/config.json; a free cloud browser is used by default."

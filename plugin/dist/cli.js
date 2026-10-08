@@ -24,8 +24,8 @@ import { existsSync, readFileSync } from "node:fs";
 
 // src/brand.ts
 var BRAND = process.env.INSTINCT_BRAND || "inskit";
-var VERSION = "0.2.2";
-var BUILD_ID = true ? "1791467197674" : "dev";
+var VERSION = "0.2.3";
+var BUILD_ID = true ? "1791467650541" : "dev";
 
 // src/config.ts
 function expandHome(path) {
@@ -20330,6 +20330,7 @@ function openInBrowser(url2) {
 
 // src/cli.ts
 import { join as join6 } from "node:path";
+import { writeFileSync as writeFileSync2 } from "node:fs";
 
 // src/db.ts
 import { mkdirSync as mkdirSync2 } from "node:fs";
@@ -20497,7 +20498,7 @@ var BrowserUseCloud = class {
 var HELP = `${BRAND} for Codex ${VERSION}
 
   inskit status                      Browser, logins and vault status
-  inskit check                       Prove it works: open example.com in the agent browser and print the title
+  inskit check [--screenshot f.jpg]  Prove it works: open example.com in the agent browser, print the title, optionally save a screenshot
   inskit open                        Open the home page (add cards, ID, see purchases)
   inskit browsers                    Browsers and profiles logins can be imported from
   inskit logins import [--sites a.com,b.com | --all] [--browser chrome] [--profile "Work"]
@@ -20518,7 +20519,8 @@ var { positionals, values } = parseArgs({
     browser: { type: "string" },
     profile: { type: "string" },
     cdp: { type: "string", default: "http://127.0.0.1:9222" },
-    help: { type: "boolean", short: "h" }
+    help: { type: "boolean", short: "h" },
+    screenshot: { type: "string" }
   }
 });
 var cfg = loadConfig();
@@ -20544,6 +20546,14 @@ try {
       process.exitCode = 1;
     } else {
       console.log('inskit works: opened example.com ("' + title + '") in ' + mode + " in " + ((Date.now() - started) / 1e3).toFixed(1) + "s.");
+      if (values.screenshot) {
+        const shot = await client.call(session, "browser_screenshot", {});
+        const data = shot.content.find((c) => c.type === "image")?.data;
+        if (data) {
+          writeFileSync2(values.screenshot, Buffer.from(data, "base64"));
+          console.log("Screenshot: " + values.screenshot);
+        }
+      }
       console.log("Restart Codex (or open a new chat) and ask @inskit for a task.");
     }
   } else if (cmd === "open") {
