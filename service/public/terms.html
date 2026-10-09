@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terms and privacy · inskit</title>
+<meta name="description" content="Rules for the free inskit cloud browser and what the hosted service keeps.">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>
+:root{--bg:#fafaf8;--ink:#18181b;--muted:#71717a;--line:#e7e5e0;--mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#111112;--ink:#ededef;--muted:#8b8b93;--line:#27272a}}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+main{max-width:600px;margin:0 auto;padding:clamp(40px,12vh,140px) 24px 64px}
+h1{font-size:15px;font-weight:600;margin:0 0 40px;display:flex;align-items:center;gap:9px;letter-spacing:-.01em}
+h1 a{display:flex;align-items:center;gap:9px;color:inherit;text-decoration:none}
+h1 svg{width:20px;height:20px}
+h2{font-size:clamp(24px,4vw,30px);line-height:1.25;font-weight:600;letter-spacing:-.02em;margin:0 0 12px;text-wrap:balance}
+h3{font-size:16px;font-weight:600;margin:40px 0 8px}
+p,ul{margin:0 0 14px;text-wrap:pretty}
+ul{padding-left:20px}
+li{margin:0 0 6px}
+.muted,small{color:var(--muted)}
+code{font:13.5px var(--mono)}
+a{color:inherit;text-underline-offset:3px}
+footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--line);font-size:13.5px;color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+  <h1><a href="/"><svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="16" fill="currentColor"/><path d="M32 13 L49 32 L32 51 L15 32 Z" fill="var(--bg)"/><path d="M32 24 L40 32 L32 40 L24 32 Z" fill="currentColor"/></svg>inskit</a></h1>
+
+  <h2>Terms and privacy</h2>
+  <p class="muted">For the free cloud browser that inskit uses by default. The code itself is open source under Apache-2.0; these terms cover only the hosted service. Last updated October 9, 2026.</p>
+
+  <h3>What the free cloud browser is</h3>
+  <p>A remote Chrome that the inskit plugin starts for you on a <a href="https://browser-use.com">Browser Use</a> account run by the maintainer. It is free, limited to 60 browser minutes a day per install and 30 minutes per session, and paid for out of pocket. It may be paused, limited further or shut down at any time, without notice.</p>
+
+  <h3>Acceptable use</h3>
+  <p>Use it for your own errands on your own accounts. Do not use it to:</p>
+  <ul>
+    <li>sign in to accounts that are not yours, or test stolen credentials or cards;</li>
+    <li>commit fraud, send spam, or create accounts in bulk;</li>
+    <li>scrape at scale, attack, overload or probe websites;</li>
+    <li>get around a site's blocks, bans, rate limits or bot checks;</li>
+    <li>break the law or the terms of the sites you visit.</li>
+  </ul>
+  <p>Installs that break these rules can be blocked without notice. Sessions go out through a residential proxy, so misuse would be traced back to this service.</p>
+
+  <h3>What the service keeps</h3>
+  <ul>
+    <li>an anonymous install ID, created on first use;</li>
+    <li>a one-way hash of the IP address that registered it, to limit sign-ups per network;</li>
+    <li>for each session: start and end time, cost and proxy traffic.</li>
+  </ul>
+  <p>No name, e-mail or account is asked for. The service never sees the pages you visit: the plugin connects straight to the browser. Your vault, passwords, cards and purchase approvals stay on your computer and never reach the service.</p>
+
+  <h3>Cookies in the cloud profile</h3>
+  <p>To keep you signed in between sessions, the cookies of sites you log in to are stored in a cloud browser profile on the maintainer's Browser Use account, which processes them under its own <a href="https://browser-use.com/privacy">privacy policy</a>. Session recording is off. The maintainer does not look at profiles, but the account owner technically could; if that is not acceptable, use your own Browser Use key or your local Chrome (one line in <code>~/.instinct/config.json</code>).</p>
+  <p>Run <code>inskit cloud forget</code> to stop your browser, delete the profile with its cookies, and disable the install ID.</p>
+
+  <h3>No warranty</h3>
+  <p>The service is provided as is, with no warranty and no uptime promise. You are responsible for what Codex does in your accounts on your instructions, including purchases you approve. To the extent the law allows, the maintainer is not liable for damages from using it.</p>
+
+  <h3>Contact</h3>
+  <p>Questions and abuse reports: open an issue on <a href="https://github.com/brunoqgalvao/inskit/issues">GitHub</a>. Security problems: report them privately as described in <a href="https://github.com/brunoqgalvao/inskit/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+
+  <footer><a href="/">inskit</a> · <a href="https://github.com/brunoqgalvao/inskit">GitHub</a> · Apache-2.0</footer>
+</main>
+</body>
+</html>

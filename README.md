@@ -93,6 +93,8 @@ The vault and the gate protect against the model seeing or leaking secrets and a
 
 Limitations: Windows login import is not supported (Chrome's app-bound encryption). Some sites bind sessions to one browser and ask you to sign in once inside the agent browser; that session then persists.
 
+The free cloud browser has its own [terms and privacy notice](https://inskit.agenturl.dev/terms.html): what it keeps, what it may not be used for, and how to delete your cloud profile.
+
 Report vulnerabilities privately, see [SECURITY.md](SECURITY.md).
 
 ## Repository
