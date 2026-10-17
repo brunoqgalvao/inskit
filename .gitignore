@@ -4,3 +4,4 @@ bench/results/
 .bench-probe*
 inbox-worker/node_modules
 inbox-worker/.wrangler
+.DS_Store
