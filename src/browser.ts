@@ -8,7 +8,7 @@ import { BrowserUseCloud } from './browser-use.ts';
 import { classifySource, cookiesSource, methodSource, scanSource, type PageClass, type ScanOptions } from './login/page-scripts.ts';
 import type { LoginPlan } from './login/recipes.ts';
 
-const PURCHASE_BUTTON = /(finalizar|concluir|confirmar|fechar|efetuar|realizar)\s+(a\s+|o\s+|minha\s+|meu\s+)?(compra|pedido|pagamento)|\bpagar\b|comprar\s+agora|fazer\s+(o\s+)?pedido|place\s+(your\s+)?order|pay\s+now|buy\s+now|complete\s+(purchase|order|payment)|confirm\s+(and\s+pay|order|purchase|payment)|submit\s+(order|payment)|^\s*pay\s+[$€£R]|^\s*pay\s*$|book\s+now|reserve\s+now|confirmar\s+reserva|jetzt\s+kaufen|zahlungspflichtig|comprar\s+ya|pagar\s+ahora/i;
+const PURCHASE_BUTTON = /(finalizar|concluir|confirmar|fechar|efetuar|realizar)\s+(a\s+|o\s+|minha\s+|meu\s+)?(compra|pedido|pagamento)|\bpagar\b|compr(ar|e)\s+(agora|j[aá]|com\s+1-clique)|fazer\s+(o\s+)?pedido|place\s+(your\s+)?order|pay\s+now|buy\s+now|complete\s+(purchase|order|payment)|confirm\s+(and\s+pay|order|purchase|payment)|submit\s+(order|payment)|^\s*pay\s+[$€£R]|^\s*pay\s*$|book\s+now|reserve\s+now|confirmar\s+reserva|jetzt\s+kaufen|zahlungspflichtig|comprar\s+ya|pagar\s+ahora/i;
 
 export function isPurchaseButton(name: string) {
   const label = name.replace(/\s+/g, ' ').trim();
