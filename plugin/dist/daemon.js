@@ -25,14 +25,16 @@ import { existsSync, readFileSync } from "node:fs";
 
 // src/brand.ts
 var BRAND = process.env.INSTINCT_BRAND || "inskit";
-var VERSION = "0.2.3";
-var BUILD_ID = true ? "1791467650541" : "dev";
+var VERSION = "0.3.0";
+var BUILD_ID = true ? "1792288021897" : "dev";
 
 // src/config.ts
 function expandHome(path) {
   return path.startsWith("~/") ? join(homedir(), path.slice(2)) : path;
 }
 var HOSTED_URL = "https://inskit.justmade.page";
+var SUPERPOWERS_URL = "https://superpowers.tools";
+var superpowersKeyFile = (home) => join(home, "superpowers.key");
 function applyConfigFile(env = process.env) {
   const home = expandHome(env.INSTINCT_HOME || "~/.instinct");
   const file2 = join(home, "config.json");
@@ -57,13 +59,17 @@ function loadConfig() {
   const keyFile = expandHome(env.INSTINCT_BROWSER_USE_KEY_FILE || join(home, "browser-use.key"));
   const apiKey = env.BROWSER_USE_API_KEY || (existsSync(keyFile) ? readFileSync(keyFile, "utf8").trim() : "");
   const hostedUrl = env.INSTINCT_HOSTED_URL === "0" ? "" : (env.INSTINCT_HOSTED_URL || HOSTED_URL).replace(/\/+$/, "");
-  const provider = env.INSTINCT_BROWSER_PROVIDER || (cdpUrl ? "cdp" : apiKey ? "browser-use" : hostedUrl ? "hosted" : "local");
-  if (!["local", "cdp", "browser-use", "hosted"].includes(provider)) throw new Error("Unknown INSTINCT_BROWSER_PROVIDER. Use hosted, browser-use, local or cdp.");
+  const spFile = superpowersKeyFile(home);
+  const spKey = env.INSKIT_SUPERPOWERS_API_KEY || (existsSync(spFile) ? readFileSync(spFile, "utf8").trim() : "");
+  const spUrl = (env.INSKIT_SUPERPOWERS_URL || SUPERPOWERS_URL).replace(/\/+$/, "");
+  const provider = env.INSTINCT_BROWSER_PROVIDER || (cdpUrl ? "cdp" : apiKey ? "browser-use" : spKey ? "superpowers" : hostedUrl ? "hosted" : "local");
+  if (!["local", "cdp", "browser-use", "superpowers", "hosted"].includes(provider)) throw new Error("Unknown INSTINCT_BROWSER_PROVIDER. Use hosted, superpowers, browser-use, local or cdp.");
   if (provider === "browser-use" && !apiKey) throw new Error("Browser Use Cloud requires BROWSER_USE_API_KEY or a browser-use.key file.");
+  if (provider === "superpowers" && !spKey) throw new Error("The Superpowers browser needs a sign-in: run inskit superpowers login.");
   if (provider === "hosted" && !hostedUrl) throw new Error("The hosted provider needs INSTINCT_HOSTED_URL.");
   if (provider === "cdp" && !cdpUrl) throw new Error("The cdp provider requires INSTINCT_CDP_URL.");
   const proxyCountry = env.INSTINCT_PROXY_COUNTRY || "br";
-  const browserUse = provider === "browser-use" ? { apiKey, proxyCountry, timeoutMinutes: 60 } : provider === "hosted" ? { hostedUrl, proxyCountry, timeoutMinutes: 30 } : void 0;
+  const browserUse = provider === "browser-use" ? { apiKey, proxyCountry, timeoutMinutes: 60 } : provider === "superpowers" ? { superpowers: { url: spUrl, apiKey: spKey }, proxyCountry, timeoutMinutes: 30 } : provider === "hosted" ? { hostedUrl, proxyCountry, timeoutMinutes: 30 } : void 0;
   return {
     home,
     port,
@@ -812,12 +818,14 @@ import { existsSync as existsSync3, mkdirSync as mkdirSync3, readFileSync as rea
 import { join as join3 } from "node:path";
 var CloudLimitError = class extends Error {
 };
+var LOCAL_HINT = ' You can also use a local Chrome (set INSTINCT_BROWSER_PROVIDER to "local" in ~/.instinct/config.json) or your own Browser Use key.';
+var SUPERPOWERS_HINT = " To keep going now, sign in to Superpowers with: inskit superpowers login (new accounts get US$5 of credit, about 14 hours of browser).";
 var BrowserUseCloud = class {
   constructor(cfg2, request = fetch) {
     this.cfg = cfg2;
     this.request = request;
     this.hostedPath = join3(cfg2.home, "hosted.json");
-    this.path = join3(cfg2.home, this.hosted ? "hosted-browser.json" : "browser-use.json");
+    this.path = join3(cfg2.home, { own: "browser-use.json", hosted: "hosted-browser.json", superpowers: "superpowers-browser.json" }[this.kind]);
     this.state = existsSync3(this.path) ? JSON.parse(readFileSync3(this.path, "utf8")) : {};
   }
   cfg;
@@ -825,8 +833,16 @@ var BrowserUseCloud = class {
   state;
   path;
   hostedPath;
+  get kind() {
+    if (this.cfg.browserUse?.superpowers) return "superpowers";
+    return !this.cfg.browserUse?.apiKey && this.cfg.browserUse?.hostedUrl ? "hosted" : "own";
+  }
   get hosted() {
-    return !this.cfg.browserUse?.apiKey && !!this.cfg.browserUse?.hostedUrl;
+    return this.kind === "hosted";
+  }
+  /** A service keeps the Browser Use key and the profile. */
+  get managed() {
+    return this.kind !== "own";
   }
   save() {
     mkdirSync3(this.cfg.home, { recursive: true, mode: 448 });
@@ -834,7 +850,7 @@ var BrowserUseCloud = class {
     renameSync(this.path + ".tmp", this.path);
   }
   async api(method, path, body) {
-    if (this.hosted) return this.hostedApi(method, path, body);
+    if (this.managed) return this.serviceApi(method, path, body);
     const res = await this.request("https://api.browser-use.com/api/v4" + path, {
       method,
       headers: { "X-Browser-Use-API-Key": this.cfg.browserUse.apiKey, "content-type": "application/json" },
@@ -859,27 +875,34 @@ var BrowserUseCloud = class {
     renameSync(this.hostedPath + ".tmp", this.hostedPath);
     return body.token;
   }
-  async hostedApi(method, path, body) {
-    const token2 = await this.hostedToken();
-    const res = await this.request(this.cfg.browserUse.hostedUrl + "/v1" + path, {
+  async serviceApi(method, path, body) {
+    const sp = this.cfg.browserUse.superpowers;
+    const token2 = sp ? sp.apiKey : await this.hostedToken();
+    const base = sp ? sp.url : this.cfg.browserUse.hostedUrl;
+    const res = await this.request(base + "/v1" + (sp && path === "/me" ? "/browsers/me" : path), {
       method,
       headers: { authorization: "Bearer " + token2, "content-type": "application/json" },
-      body: JSON.stringify(path === "/browsers" ? { proxyCountry: body?.proxyCountryCode, timeoutMinutes: body?.timeout } : body),
+      body: body === void 0 ? void 0 : JSON.stringify(path === "/browsers" ? { proxyCountry: body?.proxyCountryCode, timeoutMinutes: body?.timeout } : body),
       signal: AbortSignal.timeout(6e4)
     });
     const out = await res.json().catch(() => ({}));
     if (method === "PATCH" && [404, 410].includes(res.status)) return {};
     if (!res.ok) {
-      if ([401, 403, 429, 503].includes(res.status) && out.message) {
-        throw new CloudLimitError(out.message + ' Meanwhile you can use a local Chrome (set INSTINCT_BROWSER_PROVIDER to "local" in ~/.instinct/config.json) or your own Browser Use key.');
+      const message = String(out.message ?? out.error ?? "").trim();
+      if (sp) {
+        if (res.status === 401) throw new CloudLimitError("Superpowers did not accept the saved key (" + (message || "HTTP 401") + "). Sign in again with: inskit superpowers login");
+        if ([402, 403, 409, 429, 503].includes(res.status) && message) throw new CloudLimitError("Superpowers cloud browser: " + message);
+        throw new Error("Superpowers cloud browser " + method + " failed (HTTP " + res.status + "). Try again in a minute.");
       }
+      if ([429, 503].includes(res.status) && message) throw new CloudLimitError(message + SUPERPOWERS_HINT + LOCAL_HINT);
+      if ([401, 403].includes(res.status) && message) throw new CloudLimitError(message + LOCAL_HINT);
       throw new Error("Free cloud browser " + method + " failed (HTTP " + res.status + "). Try again in a minute.");
     }
     return out;
   }
   async start() {
     await this.stop();
-    if (!this.hosted && !this.state.profileId) {
+    if (!this.managed && !this.state.profileId) {
       const profile = await this.api("POST", "/profiles", { name: `${BRAND} for Codex` });
       if (!profile.id) throw new Error("Browser Use did not return a profile ID.");
       this.state.profileId = profile.id;
@@ -909,17 +932,24 @@ var BrowserUseCloud = class {
     delete this.state.activeId;
     this.save();
   }
-  /** Hosted only: today's usage and limits for this install. */
-  async hostedUsage() {
-    return this.hostedApi("GET", "/me", void 0);
+  /** Free hosted service: today's usage and limits. Superpowers: this month's usage, balance and prices. */
+  async usage() {
+    if (!this.managed) throw new Error("Usage is shown in your Browser Use dashboard when you use your own key.");
+    return this.serviceApi("GET", "/me", void 0);
   }
-  /** Hosted only: stop the browser, delete the cloud profile and its cookies, and drop the install token. */
-  async hostedForget() {
-    if (!existsSync3(this.hostedPath)) return false;
-    await this.hostedApi("DELETE", "/me", void 0);
-    rmSync(this.hostedPath, { force: true });
+  /** Stop the browser and delete the service's cloud profile with its cookies (and, on the free service, the install token). */
+  async forget() {
+    if (this.kind === "hosted") {
+      if (!existsSync3(this.hostedPath)) return false;
+      await this.serviceApi("DELETE", "/me", void 0);
+      rmSync(this.hostedPath, { force: true });
+      rmSync(this.path, { force: true });
+      return true;
+    }
+    if (this.kind !== "superpowers") throw new Error("With your own Browser Use key, delete profiles in your Browser Use dashboard.");
+    const out = await this.serviceApi("DELETE", "/browsers/me", void 0);
     rmSync(this.path, { force: true });
-    return true;
+    return !!out.forgotten;
   }
 };
 
@@ -1095,7 +1125,7 @@ var AgentBrowser = class {
     return !!this.context;
   }
   get mode() {
-    return this.cloud ? this.cloud.hosted ? "Browser Use Cloud, free hosted" : "Browser Use Cloud" : this.cfg.cdpUrl ? "remote CDP" : this.cfg.headless ? "headless" : "window";
+    return this.cloud ? { hosted: "Browser Use Cloud, free hosted", superpowers: "Browser Use Cloud, Superpowers account", own: "Browser Use Cloud" }[this.cloud.kind] : this.cfg.cdpUrl ? "remote CDP" : this.cfg.headless ? "headless" : "window";
   }
   async start() {
     if (this.closing) await this.closing;

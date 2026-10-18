@@ -26,6 +26,7 @@ Setting this up with a coding agent? Point it at [AGENTS.md](AGENTS.md). Running
 | Option | How to choose it | Logins |
 |---|---|---|
 | Free hosted cloud browser | Default when no key is configured | Imported per site on request, or sign in once through the live preview |
+| Your Superpowers account | `inskit superpowers login` | Same as above, in a profile that belongs to your account |
 | Your own Browser Use account | `BROWSER_USE_API_KEY`, or a key in `~/.instinct/browser-use.key` (0600) | Same as above, in a profile on your account |
 | Chrome on your computer | `"INSTINCT_BROWSER_PROVIDER": "local"` | Copied from your everyday browser on first visit (macOS) |
 | An existing Chrome | `INSTINCT_CDP_URL` (e.g. a VM's headless Chromium) | `inskit logins push <ssh-host>` |
@@ -40,6 +41,15 @@ The first time Codex needs a browser, the plugin registers an anonymous install 
 - What the service keeps: the install ID, a hash of its token and of the registering IP, and session times and costs. Cookies of sites you sign in to live in the install's cloud profile on the operator's Browser Use account.
 - `inskit cloud status` shows today's usage. `inskit cloud forget` stops your browser and deletes the cloud profile and its cookies.
 - The vault and purchase approvals never leave your computer in any mode.
+
+### Your Superpowers account
+
+When the free minutes are not enough, `inskit superpowers login` moves the browser onto a [Superpowers](https://superpowers.tools) account. It opens a page where you sign in (new accounts get US$5 of credit) and approve inskit; the key is saved to `~/.instinct/superpowers.key` (0600). There is no daily cap: browsers cost US$0.001 per minute plus US$0.007 per MB of proxy traffic, about US$0.35 for a typical hour, and the same key works for the other Superpowers tools.
+
+- Your account gets its own Browser Use profile, in a Browser Use project that holds only user browsers. Superpowers finds it from your API key alone, so no request can name another account's profile or browser.
+- Opening a browser holds enough credit for the session; you pay for what it used and the rest comes back when it closes. A browser stops when it has used what was held.
+- `inskit superpowers status` shows balance, usage and prices. `inskit cloud forget` deletes the profile and its cookies. `inskit superpowers logout` goes back to the free browser.
+- Only `inskit superpowers login` or `INSKIT_SUPERPOWERS_API_KEY` switches the browser to Superpowers; a `SUPERPOWERS_API_KEY` you set for other tools does not.
 
 ## How it works
 
@@ -65,7 +75,8 @@ The CLI ships inside the plugin: `node ~/.codex/plugins/cache/inskit/inskit/<ver
 
 | Variable | Default | |
 |---|---|---|
-| `INSTINCT_BROWSER_PROVIDER` | auto | `hosted`, `browser-use`, `local` or `cdp`. Auto: CDP if set, then your key, then hosted |
+| `INSTINCT_BROWSER_PROVIDER` | auto | `hosted`, `superpowers`, `browser-use`, `local` or `cdp`. Auto: CDP if set, then your Browser Use key, then your Superpowers sign-in, then hosted |
+| `INSKIT_SUPERPOWERS_API_KEY`, `INSKIT_SUPERPOWERS_URL` | – | Superpowers key (instead of `~/.instinct/superpowers.key`) and server, https://superpowers.tools by default |
 | `INSTINCT_HOSTED_URL` | https://inskit.justmade.page | Hosted service; `0` disables it (then local Chrome is the default) |
 | `BROWSER_USE_API_KEY` | – | Your Browser Use key; or `INSTINCT_BROWSER_USE_KEY_FILE` / `~/.instinct/browser-use.key` |
 | `INSTINCT_PROXY_COUNTRY` | br | Cloud proxy country |
