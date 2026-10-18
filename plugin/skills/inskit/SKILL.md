@@ -44,7 +44,8 @@ For bounded, multi-step browser work that needs no judgment from you (open a pag
 - For login app approval, use vault_login_challenge method=app. The user’s “Já aprovei” is a signal to check the site, not proof of authentication. Only mark verified after the site confirms it.
 - If a code is rejected: when you fetched it yourself, look for a newer code and call vault_challenge_code again; otherwise create a fresh challenge with error=invalid_code on the SAME page. If expired, inspect the site and request a new code only as needed; never repeat a login/password attempt or resend codes in a loop. Codes are single-use, short-lived and bound to the originating site and session.
 - These login tools do not authorize payments. Keep the purchase approval gate and bank verification separate.
-- CAPTCHA, passkey, bank app approval, or anything only a human can do: browser_hand_over, tell the user exactly what to click, wait for their reply, then snapshot again.
+- CAPTCHA: do not hand over just because a challenge appears. Use the active browser's supported tools to attempt the visible challenge first, including a checkbox or image/text challenge when you can interpret it. Honor any action-time confirmation required by the browser tool or higher-priority instructions; this skill does not waive it. If a native automatic solver is available, let it finish before trying manually. Take a fresh snapshot to confirm the challenge cleared; that alone does not prove the account is logged in. Stop after two unsuccessful attempts, a loop, a rate limit, or an explicit block. Then use browser_hand_over with the exact remaining step. Do not change browser/network identity or disable protections to get around a rejection.
+- Passkeys, bank app approval, or a challenge requiring an action only the user can perform: browser_hand_over, tell the user exactly what to do, wait for their reply, then snapshot again.
 
 ## Buying anything
 
