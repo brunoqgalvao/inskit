@@ -26,7 +26,7 @@ import { existsSync, readFileSync } from "node:fs";
 // src/brand.ts
 var BRAND = process.env.INSTINCT_BRAND || "inskit";
 var VERSION = "0.3.0";
-var BUILD_ID = true ? "1792288021897" : "dev";
+var BUILD_ID = true ? "1792290291677" : "dev";
 
 // src/config.ts
 function expandHome(path) {
@@ -1086,7 +1086,9 @@ var methodSource = (prefs) => call(METHOD, prefs);
 // src/browser.ts
 var PURCHASE_BUTTON = /(finalizar|concluir|confirmar|fechar|efetuar|realizar)\s+(a\s+|o\s+|minha\s+|meu\s+)?(compra|pedido|pagamento)|\bpagar\b|comprar\s+agora|fazer\s+(o\s+)?pedido|place\s+(your\s+)?order|pay\s+now|buy\s+now|complete\s+(purchase|order|payment)|confirm\s+(and\s+pay|order|purchase|payment)|submit\s+(order|payment)|^\s*pay\s+[$€£R]|^\s*pay\s*$|book\s+now|reserve\s+now|confirmar\s+reserva|jetzt\s+kaufen|zahlungspflichtig|comprar\s+ya|pagar\s+ahora/i;
 function isPurchaseButton(name) {
-  return PURCHASE_BUTTON.test(name.replace(/\s+/g, " ").trim());
+  const label = name.replace(/\s+/g, " ").trim();
+  if (/^(pagar|pay)\s+(sem|without)\b/i.test(label)) return false;
+  return PURCHASE_BUTTON.test(label);
 }
 var MAC_FALLBACKS = [
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -1731,6 +1733,11 @@ Title: ${await page.title().catch(() => "")}
     this.secretFieldRefs.set(page, masked);
     for (let i = 0; i < refs.length; i++) await locators[i].fill(value[i], { timeout: 8e3 });
     await page.waitForTimeout(300);
+  }
+  /** Fails when the ref no longer points at an element (stale ref, page or browser replaced), before anything is clicked. */
+  async purchaseTarget(session, ref2) {
+    const page = await this.page(session);
+    await this.locate(page, ref2).waitFor({ state: "attached", timeout: 1e4 });
   }
   async clickPurchase(session, ref2) {
     const page = await this.page(session);
@@ -22683,6 +22690,11 @@ Current source: ${current?.browser ?? "first found"} / ${current?.profile ?? "la
       }
       case "purchase_submit": {
         const order = this.purchases.checkSubmit(a.order_id, await b.currentUrl(session), await b.rawText(session));
+        try {
+          await b.purchaseTarget(session, a.ref);
+        } catch {
+          throw new Error(`The button ${a.ref} is not on the page any more (the page or browser changed). Nothing was clicked and ${order.id} is still approved: take a new snapshot, check the total, and call purchase_submit with the fresh ref.`);
+        }
         this.purchases.markSubmitted(order.id);
         const snap = await b.clickPurchase(session, a.ref);
         return `Clicked the final button for ${order.id}. Read the page: if it shows an order number, call purchase_confirm; if it is unclear, do NOT click again \u2014 check the store's order history and tell the user.

@@ -15,12 +15,13 @@ const proposal = {
   shipping_method: 'Free', delivery_estimate: 'Monday', address: 'Rua Teste 1', payment_method: 'Mastercard ending 1558',
 };
 
-function fixture(approval: 'chat' | 'page' = 'chat') {
+function fixture(approval: 'chat' | 'page' = 'chat', present = (_ref: string) => true) {
   const db = new Db(':memory:');
   const clicks: string[] = [];
   const browser = {
     currentUrl: async () => 'https://shop.example.com/checkout',
     rawText: async () => 'Total R$ 98,60 Pagar e finalizar',
+    purchaseTarget: async (_s: string, ref: string) => { if (!present(ref)) throw new Error('Invalid frame in aria-ref selector'); },
     clickPurchase: async (_s: string, ref: string) => { clicks.push(ref); return 'Order #123'; },
   } as unknown as AgentBrowser;
   const purchases = new Purchases(db);
@@ -81,3 +82,26 @@ test('a declined chat answer blocks payment; page mode keeps the approval page f
     assert.match(proposed.text, /\/a\/[\w-]{20,}/);
   } finally { page.db.sql.close(); }
 });
+
+test('a stale button ref clicks nothing and leaves the order approved for a retry', async () => {
+  const { db, purchases, call, clicks } = fixture('chat', ref => ref !== 'f11e190');
+  try {
+    const orderId = (await call('purchase_propose', proposal)).text.match(/ord_\w+/)![0];
+    await call('purchase_approve', { order_id: orderId, approve: true, user_reply: 'pode' });
+    const stale = await call('purchase_submit', { order_id: orderId, ref: 'f11e190' });
+    assert.ok(stale.isError && /Nothing was clicked/.test(stale.text), stale.text);
+    assert.equal(purchases.get(orderId)?.status, 'approved');
+    assert.equal(clicks.length, 0);
+    const fresh = await call('purchase_submit', { order_id: orderId, ref: 'f3e190' });
+    assert.ok(!fresh.isError, fresh.text);
+    assert.deepEqual(clicks, ['f3e190']);
+    assert.equal(purchases.get(orderId)?.status, 'submitted');
+  } finally { db.sql.close(); }
+});
+
+test('switching a checkout to the card form is not a payment; paying buttons still are', async () => {
+  const { isPurchaseButton } = await import('../src/browser.ts');
+  for (const label of ['Pagar sem o Link', 'Pay without Link', 'pagar  sem  Link']) assert.equal(isPurchaseButton(label), false, label);
+  for (const label of ['Pagar', 'Pagar com Link', 'Pay now', 'Finalizar compra', 'Pay $10.00']) assert.equal(isPurchaseButton(label), true, label);
+});
+

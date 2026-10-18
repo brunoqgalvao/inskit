@@ -499,6 +499,11 @@ export class Service {
       }
       case 'purchase_submit': {
         const order = this.purchases.checkSubmit(a.order_id, await b.currentUrl(session), await b.rawText(session));
+        // A ref that resolves to nothing means no click happened: the order stays approved for a retry with a fresh ref.
+        try { await b.purchaseTarget(session, a.ref); } catch {
+          throw new Error(`The button ${a.ref} is not on the page any more (the page or browser changed). Nothing was clicked and ${order.id} is still approved: take a new snapshot, check the total, and call purchase_submit with the fresh ref.`);
+        }
+        // From here a click may reach the store, so the order counts as submitted even if the click errors: never pay twice.
         this.purchases.markSubmitted(order.id);
         const snap = await b.clickPurchase(session, a.ref);
         return `Clicked the final button for ${order.id}. Read the page: if it shows an order number, call purchase_confirm; if it is unclear, do NOT click again — check the store's order history and tell the user.\n${snap}`;
