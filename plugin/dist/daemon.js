@@ -26,7 +26,7 @@ import { existsSync, readFileSync } from "node:fs";
 // src/brand.ts
 var BRAND = process.env.INSTINCT_BRAND || "inskit";
 var VERSION = "0.3.0";
-var BUILD_ID = true ? "1792290291677" : "dev";
+var BUILD_ID = true ? "1792291670312" : "dev";
 
 // src/config.ts
 function expandHome(path) {
@@ -1084,7 +1084,7 @@ var classifySource = (opts) => call(CLASSIFY, opts);
 var methodSource = (prefs) => call(METHOD, prefs);
 
 // src/browser.ts
-var PURCHASE_BUTTON = /(finalizar|concluir|confirmar|fechar|efetuar|realizar)\s+(a\s+|o\s+|minha\s+|meu\s+)?(compra|pedido|pagamento)|\bpagar\b|comprar\s+agora|fazer\s+(o\s+)?pedido|place\s+(your\s+)?order|pay\s+now|buy\s+now|complete\s+(purchase|order|payment)|confirm\s+(and\s+pay|order|purchase|payment)|submit\s+(order|payment)|^\s*pay\s+[$€£R]|^\s*pay\s*$|book\s+now|reserve\s+now|confirmar\s+reserva|jetzt\s+kaufen|zahlungspflichtig|comprar\s+ya|pagar\s+ahora/i;
+var PURCHASE_BUTTON = /(finalizar|concluir|confirmar|fechar|efetuar|realizar)\s+(a\s+|o\s+|minha\s+|meu\s+)?(compra|pedido|pagamento)|\bpagar\b|compr(ar|e)\s+(agora|j[aá]|com\s+1-clique)|fazer\s+(o\s+)?pedido|place\s+(your\s+)?order|pay\s+now|buy\s+now|complete\s+(purchase|order|payment)|confirm\s+(and\s+pay|order|purchase|payment)|submit\s+(order|payment)|^\s*pay\s+[$€£R]|^\s*pay\s*$|book\s+now|reserve\s+now|confirmar\s+reserva|jetzt\s+kaufen|zahlungspflichtig|comprar\s+ya|pagar\s+ahora/i;
 function isPurchaseButton(name) {
   const label = name.replace(/\s+/g, " ").trim();
   if (/^(pagar|pay)\s+(sem|without)\b/i.test(label)) return false;

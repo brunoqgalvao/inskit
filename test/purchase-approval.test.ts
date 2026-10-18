@@ -102,6 +102,6 @@ test('a stale button ref clicks nothing and leaves the order approved for a retr
 test('switching a checkout to the card form is not a payment; paying buttons still are', async () => {
   const { isPurchaseButton } = await import('../src/browser.ts');
   for (const label of ['Pagar sem o Link', 'Pay without Link', 'pagar  sem  Link']) assert.equal(isPurchaseButton(label), false, label);
-  for (const label of ['Pagar', 'Pagar com Link', 'Pay now', 'Finalizar compra', 'Pay $10.00']) assert.equal(isPurchaseButton(label), true, label);
+  for (const label of ['Pagar', 'Pagar com Link', 'Pay now', 'Finalizar compra', 'Pay $10.00', 'Compre agora', 'Comprar agora com 1-Clique', 'Compre já']) assert.equal(isPurchaseButton(label), true, label);
 });
 
