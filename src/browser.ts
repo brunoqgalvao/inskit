@@ -11,7 +11,10 @@ import type { LoginPlan } from './login/recipes.ts';
 const PURCHASE_BUTTON = /(finalizar|concluir|confirmar|fechar|efetuar|realizar)\s+(a\s+|o\s+|minha\s+|meu\s+)?(compra|pedido|pagamento)|\bpagar\b|comprar\s+agora|fazer\s+(o\s+)?pedido|place\s+(your\s+)?order|pay\s+now|buy\s+now|complete\s+(purchase|order|payment)|confirm\s+(and\s+pay|order|purchase|payment)|submit\s+(order|payment)|^\s*pay\s+[$€£R]|^\s*pay\s*$|book\s+now|reserve\s+now|confirmar\s+reserva|jetzt\s+kaufen|zahlungspflichtig|comprar\s+ya|pagar\s+ahora/i;
 
 export function isPurchaseButton(name: string) {
-  return PURCHASE_BUTTON.test(name.replace(/\s+/g, ' ').trim());
+  const label = name.replace(/\s+/g, ' ').trim();
+  // "Pagar sem o Link" / "Pay without Link" only switch a checkout to the card form; they pay nothing.
+  if (/^(pagar|pay)\s+(sem|without)\b/i.test(label)) return false;
+  return PURCHASE_BUTTON.test(label);
 }
 
 const MAC_FALLBACKS = [
@@ -657,6 +660,12 @@ export class AgentBrowser {
     refs.forEach(ref => masked.add(ref)); this.secretFieldRefs.set(page, masked);
     for (let i = 0; i < refs.length; i++) await locators[i].fill(value[i], { timeout: 8000 });
     await page.waitForTimeout(300);
+  }
+
+  /** Fails when the ref no longer points at an element (stale ref, page or browser replaced), before anything is clicked. */
+  async purchaseTarget(session: string, ref: string) {
+    const page = await this.page(session);
+    await this.locate(page, ref).waitFor({ state: 'attached', timeout: 10_000 });
   }
 
   async clickPurchase(session: string, ref: string) {
