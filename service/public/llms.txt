@@ -1,6 +1,6 @@
 # inskit
 
-> Open-source Codex plugin: a browser that stays logged in, a vault for cards and passwords the model never sees, and approval before anything is bought. A free hosted cloud browser is the default, so no account or API key is needed.
+> Open-source Codex plugin: a browser that stays logged in, a vault for cards and passwords the model never sees, and approval before anything is bought. A free hosted cloud browser is the default, so no account or API key is needed. For more browser time, `inskit superpowers login` moves the browser onto a Superpowers account (https://superpowers.tools), billed per minute plus proxy traffic.
 
 ## Install (macOS or Linux, needs Codex)
 

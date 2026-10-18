@@ -11,6 +11,8 @@ Check `agent_status` before describing where the browser runs. When it says Brow
 
 "Browser Use Cloud, free hosted" means the free hosted service: nothing to configure, 60 browser minutes a day. Tell the user once, in one sentence, that the cookies of sites they sign in to are kept in a cloud browser profile on the inskit service so they stay logged in, that their vault and approvals stay on this computer, and that `inskit cloud forget` deletes the profile. If they prefer, they can switch to Chrome on this computer by putting {"INSTINCT_BROWSER_PROVIDER": "local"} in ~/.instinct/config.json, or use their own Browser Use key. When a limit is reached, relay the message as is; do not switch providers on your own.
 
+"Browser Use Cloud, Superpowers account" means the user signed in with `inskit superpowers login`: no daily cap, billed to their Superpowers balance per browser minute plus proxy traffic (`inskit superpowers status` shows balance, usage and prices). The free tier's limit message offers this. Run `inskit superpowers login` only when the user asks to keep going on Superpowers: it prints a link and a code, opens their browser, and waits until they approve; the key lands in ~/.instinct/superpowers.key and never in the chat. Sites they were signed in to on the free browser need one more sign-in on the Superpowers one. `inskit superpowers logout` goes back to the free browser.
+
 The local Chrome workflow below applies when the status says window/headless. With cloud mode, use the live preview instead of referring to an agent window.
 
 

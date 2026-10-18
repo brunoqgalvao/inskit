@@ -11,8 +11,11 @@ export type Config = {
   publicUrl: string;
   /** Attach to an existing browser over CDP (e.g. the VM's headless Chromium) instead of launching one. */
   cdpUrl?: string;
-  /** Cloud browser: your own Browser Use key, or the free hosted service (hostedUrl) when there is no key. */
-  browserUse?: { apiKey?: string; hostedUrl?: string; proxyCountry: string; timeoutMinutes: number };
+  /**
+   * Cloud browser: your own Browser Use key, a Superpowers account (the service keeps the key and your profile and bills
+   * the account), or the free hosted service (hostedUrl) when there is neither.
+   */
+  browserUse?: { apiKey?: string; hostedUrl?: string; superpowers?: { url: string; apiKey: string }; proxyCountry: string; timeoutMinutes: number };
   headless: boolean;
   channel?: string;
   executablePath?: string;
@@ -34,6 +37,10 @@ export function expandHome(path: string) {
 
 /** Default home of the free hosted cloud browser service. */
 export const HOSTED_URL = 'https://inskit.justmade.page';
+/** Superpowers: paid cloud browsers billed to your account, plus its other tools. */
+export const SUPERPOWERS_URL = 'https://superpowers.tools';
+/** Written by `inskit superpowers login` (0600). Only this file or INSKIT_SUPERPOWERS_API_KEY switches the browser to Superpowers. */
+export const superpowersKeyFile = (home: string) => join(home, 'superpowers.key');
 
 /**
  * Settings file for people who cannot set environment variables (the Codex app): <home>/config.json holds the
@@ -63,13 +70,19 @@ export function loadConfig(): Config {
   const keyFile = expandHome(env.INSTINCT_BROWSER_USE_KEY_FILE || join(home, 'browser-use.key'));
   const apiKey = env.BROWSER_USE_API_KEY || (existsSync(keyFile) ? readFileSync(keyFile, 'utf8').trim() : '');
   const hostedUrl = env.INSTINCT_HOSTED_URL === '0' ? '' : (env.INSTINCT_HOSTED_URL || HOSTED_URL).replace(/\/+$/, '');
-  const provider = env.INSTINCT_BROWSER_PROVIDER || (cdpUrl ? 'cdp' : apiKey ? 'browser-use' : hostedUrl ? 'hosted' : 'local');
-  if (!['local', 'cdp', 'browser-use', 'hosted'].includes(provider)) throw new Error('Unknown INSTINCT_BROWSER_PROVIDER. Use hosted, browser-use, local or cdp.');
+  // A SUPERPOWERS_API_KEY set for other tools must not move the browser onto a paid account; only an explicit sign-in does.
+  const spFile = superpowersKeyFile(home);
+  const spKey = env.INSKIT_SUPERPOWERS_API_KEY || (existsSync(spFile) ? readFileSync(spFile, 'utf8').trim() : '');
+  const spUrl = (env.INSKIT_SUPERPOWERS_URL || SUPERPOWERS_URL).replace(/\/+$/, '');
+  const provider = env.INSTINCT_BROWSER_PROVIDER || (cdpUrl ? 'cdp' : apiKey ? 'browser-use' : spKey ? 'superpowers' : hostedUrl ? 'hosted' : 'local');
+  if (!['local', 'cdp', 'browser-use', 'superpowers', 'hosted'].includes(provider)) throw new Error('Unknown INSTINCT_BROWSER_PROVIDER. Use hosted, superpowers, browser-use, local or cdp.');
   if (provider === 'browser-use' && !apiKey) throw new Error('Browser Use Cloud requires BROWSER_USE_API_KEY or a browser-use.key file.');
+  if (provider === 'superpowers' && !spKey) throw new Error('The Superpowers browser needs a sign-in: run inskit superpowers login.');
   if (provider === 'hosted' && !hostedUrl) throw new Error('The hosted provider needs INSTINCT_HOSTED_URL.');
   if (provider === 'cdp' && !cdpUrl) throw new Error('The cdp provider requires INSTINCT_CDP_URL.');
   const proxyCountry = env.INSTINCT_PROXY_COUNTRY || 'br';
   const browserUse = provider === 'browser-use' ? { apiKey, proxyCountry, timeoutMinutes: 60 }
+    : provider === 'superpowers' ? { superpowers: { url: spUrl, apiKey: spKey }, proxyCountry, timeoutMinutes: 30 }
     : provider === 'hosted' ? { hostedUrl, proxyCountry, timeoutMinutes: 30 }
     : undefined;
   return {

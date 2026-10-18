@@ -58,7 +58,7 @@ export class AgentBrowser {
   }
 
   get running() { return !!this.context; }
-  get mode() { return this.cloud ? (this.cloud.hosted ? 'Browser Use Cloud, free hosted' : 'Browser Use Cloud') : this.cfg.cdpUrl ? 'remote CDP' : this.cfg.headless ? 'headless' : 'window'; }
+  get mode() { return this.cloud ? { hosted: 'Browser Use Cloud, free hosted', superpowers: 'Browser Use Cloud, Superpowers account', own: 'Browser Use Cloud' }[this.cloud.kind] : this.cfg.cdpUrl ? 'remote CDP' : this.cfg.headless ? 'headless' : 'window'; }
 
   async start() {
     if (this.closing) await this.closing;

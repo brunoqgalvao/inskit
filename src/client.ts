@@ -42,6 +42,16 @@ export class DaemonClient {
     child.unref();
   }
 
+  /** Stops a running daemon without starting one, so the next call starts it with fresh settings. */
+  async shutdown(): Promise<boolean> {
+    const health = await this.health();
+    const info = this.readInfo();
+    if (!health || !info) return false;
+    await fetch(`http://127.0.0.1:${this.cfg.port}/api/shutdown`, { method: 'POST', headers: { authorization: `Bearer ${info.token}` } }).catch(() => {});
+    for (let i = 0; i < 20 && (await this.health()); i++) await sleep(250);
+    return true;
+  }
+
   async ensure(): Promise<DaemonInfo> {
     let health = await this.health();
     if (health && newer(BUILD_ID, health.build)) {

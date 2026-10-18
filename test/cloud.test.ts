@@ -121,7 +121,64 @@ test('hosted limits come back as a clear message with a way out', async () => {
   try {
     await assert.rejects(new BrowserUseCloud(cfg, request).start(), (e: Error) => {
       assert.match(e.message, /Daily free limit reached/);
+      assert.match(e.message, /inskit superpowers login/);
       assert.match(e.message, /local/);
+      return true;
+    });
+  } finally { rmSync(home, { recursive: true, force: true }); }
+});
+
+test('only a Superpowers sign-in moves the browser onto the paid account; the free tier stays the default', () => {
+  const home = mkdtempSync(join(tmpdir(), 'instinct-sp-'));
+  const previous = { ...process.env };
+  try {
+    for (const key of Object.keys(process.env)) if (/^(INSTINCT_|INSKIT_)/.test(key) || key === 'BROWSER_USE_API_KEY') delete process.env[key];
+    process.env.INSTINCT_HOME = home;
+    // A key set for other Superpowers tools does not switch the browser.
+    process.env.SUPERPOWERS_API_KEY = 'sp_for_other_tools';
+    assert.ok(loadConfig().browserUse?.hostedUrl);
+    assert.equal(loadConfig().browserUse?.superpowers, undefined);
+    writeFileSync(join(home, 'superpowers.key'), 'sp_signed_in\n', { mode: 0o600 });
+    const cfg = loadConfig();
+    assert.deepEqual(cfg.browserUse?.superpowers, { url: 'https://superpowers.tools', apiKey: 'sp_signed_in' });
+    assert.equal(new BrowserUseCloud(cfg).kind, 'superpowers');
+    // Your own Browser Use key still wins over the account.
+    process.env.BROWSER_USE_API_KEY = 'bu_own';
+    assert.equal(new BrowserUseCloud(loadConfig()).kind, 'own');
+  } finally {
+    for (const key of Object.keys(process.env)) if (!(key in previous)) delete process.env[key];
+    Object.assign(process.env, previous);
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('Superpowers: browsers and usage go to the account with its key, and refusals come back as they are', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'instinct-sp-'));
+  const cfg = { ...loadConfig(), home, cdpUrl: undefined, browserUse: { superpowers: { url: 'https://sp.example', apiKey: 'sp_key' }, proxyCountry: 'br', timeoutMinutes: 30 } };
+  const calls: string[] = [];
+  let broke = false;
+  const request: typeof fetch = async (url, init) => {
+    const u = new URL(String(url));
+    calls.push(init!.method + ' ' + u.pathname + ' ' + (init!.headers as any).authorization);
+    if (broke) return Response.json({ error: 'insufficient balance: add funds at https://sp.example/topup/x', message: 'insufficient balance: add funds at https://sp.example/topup/x' }, { status: 402 });
+    if (u.pathname === '/v1/browsers') {
+      assert.deepEqual(JSON.parse(String(init!.body)), { proxyCountry: 'br', timeoutMinutes: 30 });
+      return Response.json({ id: 'br_1', cdpUrl: 'wss://example.invalid/secret-cdp', liveUrl: 'https://live.example/br_1' }, { status: 201 });
+    }
+    if (u.pathname === '/v1/browsers/me') return Response.json({ account_id: 'acc_1', balance_usd: 4.2 });
+    return Response.json({ stopped: true });
+  };
+  try {
+    const cloud = new BrowserUseCloud(cfg, request);
+    assert.equal(cloud.managed, true);
+    assert.equal((await cloud.start()).cdpUrl, 'wss://example.invalid/secret-cdp');
+    assert.equal((await cloud.usage()).balance_usd, 4.2);
+    await cloud.stop();
+    assert.deepEqual(calls, ['POST /v1/browsers Bearer sp_key', 'GET /v1/browsers/me Bearer sp_key', 'PATCH /v1/browsers/br_1 Bearer sp_key']);
+    assert.doesNotMatch(readFileSync(join(home, 'superpowers-browser.json'), 'utf8'), /secret|wss|sp_key/);
+    broke = true;
+    await assert.rejects(new BrowserUseCloud(cfg, request).start(), (e: Error) => {
+      assert.match(e.message, /^Superpowers cloud browser: insufficient balance: add funds at https:\/\/sp.example\/topup\/x$/);
       return true;
     });
   } finally { rmSync(home, { recursive: true, force: true }); }

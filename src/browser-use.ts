@@ -5,14 +5,19 @@ import { BRAND } from './brand.ts';
 
 type CloudSession = { id: string; cdpUrl: string; liveUrl?: string };
 type CloudState = { profileId?: string; activeId?: string };
+/** own: your Browser Use key. hosted: the free service. superpowers: your Superpowers account. */
+export type CloudKind = 'own' | 'hosted' | 'superpowers';
 
 /** Errors the user can act on (free limit reached, service paused). Shown as-is. */
 export class CloudLimitError extends Error {}
 
+const LOCAL_HINT = ' You can also use a local Chrome (set INSTINCT_BROWSER_PROVIDER to "local" in ~/.instinct/config.json) or your own Browser Use key.';
+const SUPERPOWERS_HINT = ' To keep going now, sign in to Superpowers with: inskit superpowers login (new accounts get US$5 of credit, about 14 hours of browser).';
+
 /**
  * Owns only this plugin's cloud browser. Other projects' sessions are never touched.
- * With an API key it talks to Browser Use directly; without one it asks the free hosted service, which keeps the
- * key and the profile and hands back the same CDP and live preview links.
+ * With an API key it talks to Browser Use directly. Otherwise a service keeps the key and the profile and hands back the
+ * same CDP and live preview links: your Superpowers account after inskit superpowers login, or else the free hosted service.
  */
 export class BrowserUseCloud {
   private state: CloudState;
@@ -20,12 +25,18 @@ export class BrowserUseCloud {
   private hostedPath: string;
   constructor(private cfg: Config, private request: typeof fetch = fetch) {
     this.hostedPath = join(cfg.home, 'hosted.json');
-    // Separate state per account: a browser ID from the hosted service means nothing to your own key, and back.
-    this.path = join(cfg.home, this.hosted ? 'hosted-browser.json' : 'browser-use.json');
+    // Separate state per account: a browser ID from one service means nothing to another.
+    this.path = join(cfg.home, { own: 'browser-use.json', hosted: 'hosted-browser.json', superpowers: 'superpowers-browser.json' }[this.kind]);
     this.state = existsSync(this.path) ? JSON.parse(readFileSync(this.path, 'utf8')) : {};
   }
 
-  get hosted() { return !this.cfg.browserUse?.apiKey && !!this.cfg.browserUse?.hostedUrl; }
+  get kind(): CloudKind {
+    if (this.cfg.browserUse?.superpowers) return 'superpowers';
+    return !this.cfg.browserUse?.apiKey && this.cfg.browserUse?.hostedUrl ? 'hosted' : 'own';
+  }
+  get hosted() { return this.kind === 'hosted'; }
+  /** A service keeps the Browser Use key and the profile. */
+  get managed() { return this.kind !== 'own'; }
 
   private save() {
     mkdirSync(this.cfg.home, { recursive: true, mode: 0o700 });
@@ -34,7 +45,7 @@ export class BrowserUseCloud {
   }
 
   private async api(method: string, path: string, body: unknown) {
-    if (this.hosted) return this.hostedApi(method, path, body);
+    if (this.managed) return this.serviceApi(method, path, body);
     const res = await this.request('https://api.browser-use.com/api/v4' + path, {
       method, headers: { 'X-Browser-Use-API-Key': this.cfg.browserUse!.apiKey!, 'content-type': 'application/json' },
       body: JSON.stringify(body), signal: AbortSignal.timeout(45_000),
@@ -60,19 +71,28 @@ export class BrowserUseCloud {
     return body.token;
   }
 
-  private async hostedApi(method: string, path: string, body: unknown): Promise<any> {
-    const token = await this.hostedToken();
-    const res = await this.request(this.cfg.browserUse!.hostedUrl + '/v1' + path, {
+  private async serviceApi(method: string, path: string, body: unknown): Promise<any> {
+    const sp = this.cfg.browserUse!.superpowers;
+    const token = sp ? sp.apiKey : await this.hostedToken();
+    const base = sp ? sp.url : this.cfg.browserUse!.hostedUrl;
+    const res = await this.request(base + '/v1' + (sp && path === '/me' ? '/browsers/me' : path), {
       method, headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' },
-      body: JSON.stringify(path === '/browsers' ? { proxyCountry: (body as any)?.proxyCountryCode, timeoutMinutes: (body as any)?.timeout } : body),
+      body: body === undefined ? undefined : JSON.stringify(path === '/browsers' ? { proxyCountry: (body as any)?.proxyCountryCode, timeoutMinutes: (body as any)?.timeout } : body),
       signal: AbortSignal.timeout(60_000),
     });
     const out = await res.json().catch(() => ({})) as any;
     if (method === 'PATCH' && [404, 410].includes(res.status)) return {};
     if (!res.ok) {
-      if ([401, 403, 429, 503].includes(res.status) && out.message) {
-        throw new CloudLimitError(out.message + ' Meanwhile you can use a local Chrome (set INSTINCT_BROWSER_PROVIDER to "local" in ~/.instinct/config.json) or your own Browser Use key.');
+      const message = String(out.message ?? out.error ?? '').trim();
+      if (sp) {
+        // Superpowers explains balance and limit refusals itself, add-funds link included.
+        if (res.status === 401) throw new CloudLimitError('Superpowers did not accept the saved key (' + (message || 'HTTP 401') + '). Sign in again with: inskit superpowers login');
+        if ([402, 403, 409, 429, 503].includes(res.status) && message) throw new CloudLimitError('Superpowers cloud browser: ' + message);
+        throw new Error('Superpowers cloud browser ' + method + ' failed (HTTP ' + res.status + '). Try again in a minute.');
       }
+      // Out of free minutes or capacity: point to the paid path first, then the free alternatives.
+      if ([429, 503].includes(res.status) && message) throw new CloudLimitError(message + SUPERPOWERS_HINT + LOCAL_HINT);
+      if ([401, 403].includes(res.status) && message) throw new CloudLimitError(message + LOCAL_HINT);
       throw new Error('Free cloud browser ' + method + ' failed (HTTP ' + res.status + '). Try again in a minute.');
     }
     return out;
@@ -81,8 +101,8 @@ export class BrowserUseCloud {
   async start(): Promise<CloudSession> {
     // Reconcile a daemon crash before allocating another paid browser.
     await this.stop();
-    // The hosted service keeps one profile per install; with your own key the plugin creates and reuses its own.
-    if (!this.hosted && !this.state.profileId) {
+    // A service keeps one profile per install or account; with your own key the plugin creates and reuses its own.
+    if (!this.managed && !this.state.profileId) {
       const profile = await this.api('POST', '/profiles', { name: `${BRAND} for Codex` });
       if (!profile.id) throw new Error('Browser Use did not return a profile ID.');
       this.state.profileId = profile.id;
@@ -107,17 +127,24 @@ export class BrowserUseCloud {
     this.save();
   }
 
-  /** Hosted only: today's usage and limits for this install. */
-  async hostedUsage(): Promise<{ id: string; today: { minutes: number; usd: number }; limits: { minutes_per_day: number; session_minutes: number } }> {
-    return this.hostedApi('GET', '/me', undefined);
+  /** Free hosted service: today's usage and limits. Superpowers: this month's usage, balance and prices. */
+  async usage(): Promise<any> {
+    if (!this.managed) throw new Error('Usage is shown in your Browser Use dashboard when you use your own key.');
+    return this.serviceApi('GET', '/me', undefined);
   }
 
-  /** Hosted only: stop the browser, delete the cloud profile and its cookies, and drop the install token. */
-  async hostedForget() {
-    if (!existsSync(this.hostedPath)) return false;
-    await this.hostedApi('DELETE', '/me', undefined);
-    rmSync(this.hostedPath, { force: true });
+  /** Stop the browser and delete the service's cloud profile with its cookies (and, on the free service, the install token). */
+  async forget() {
+    if (this.kind === 'hosted') {
+      if (!existsSync(this.hostedPath)) return false;
+      await this.serviceApi('DELETE', '/me', undefined);
+      rmSync(this.hostedPath, { force: true });
+      rmSync(this.path, { force: true });
+      return true;
+    }
+    if (this.kind !== 'superpowers') throw new Error('With your own Browser Use key, delete profiles in your Browser Use dashboard.');
+    const out = await this.serviceApi('DELETE', '/browsers/me', undefined);
     rmSync(this.path, { force: true });
-    return true;
+    return !!out.forgotten;
   }
 }
