@@ -246,6 +246,18 @@ export class Ledger extends DurableObject<Env> {
       proxy_mb_today: Number((this.sql.exec('select coalesce(sum(proxy_mb), 0) as n from sessions where started_at >= ?', since).one().n as number).toFixed(1)),
     });
   }
+
+  /** Operator view: one row per install, no IPs (only the stored hash). */
+  installs() {
+    const since = Date.now() - 7 * DAY;
+    const rows = this.sql.exec(
+      `select i.id, i.created_at, i.ip_hash, i.blocked,
+        (select count(*) from sessions s where s.install_id = i.id and s.started_at >= ?) as sessions_7d,
+        (select max(s.started_at) from sessions s where s.install_id = i.id) as last_session_at,
+        (select coalesce(sum(s.cost_usd), 0) from sessions s where s.install_id = i.id and s.started_at >= ?) as cost_usd_7d
+       from installs i order by i.created_at desc`, since, since).toArray();
+    return json({ installs: rows.map(r => ({ ...r, cost_usd_7d: Number((r.cost_usd_7d as number).toFixed(4)) })) });
+  }
 }
 
 const ledger = (env: Env) => env.LEDGER.get(env.LEDGER.idFromName('main'));
@@ -266,6 +278,10 @@ async function route(req: Request, env: Env, url: URL): Promise<Response> {
   if (path === '/v1/stats' && req.method === 'GET') {
     if (!env.ADMIN_TOKEN || (await sha256(token)) !== (await sha256(env.ADMIN_TOKEN))) return fail(401, 'unauthorized', 'Admin token required.');
     return l.stats();
+  }
+  if (path === '/v1/installs' && req.method === 'GET') {
+    if (!env.ADMIN_TOKEN || (await sha256(token)) !== (await sha256(env.ADMIN_TOKEN))) return fail(401, 'unauthorized', 'Admin token required.');
+    return l.installs();
   }
   if (!token.startsWith('ik_')) return fail(401, 'unauthorized', 'Missing install token.');
   if (path === '/v1/me' && req.method === 'GET') return l.me(token);
