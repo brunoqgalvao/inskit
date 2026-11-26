@@ -36490,7 +36490,7 @@ import { existsSync, readFileSync } from "node:fs";
 // src/brand.ts
 var BRAND = process.env.INSTINCT_BRAND || "inskit";
 var VERSION = "0.3.0";
-var BUILD_ID = true ? "1795696876548" : "dev";
+var BUILD_ID = true ? "1795696917412" : "dev";
 
 // src/config.ts
 function expandHome(path) {
@@ -36796,7 +36796,7 @@ var TOOL_NAMES = new Set(TOOLS.map((t) => t.name));
 var cfg = loadConfig();
 var client = new DaemonClient(cfg);
 var session = randomUUID();
-var ownerApp = process.env.INSTINCT_APPROVAL === "owner";
+var ownerApp = process.env.INSTINCT_OWNER_APP === "1";
 var INSTRUCTIONS = `${BRAND} gives you a Browser Use Cloud or local browser (check agent_status), with reusable website logins, a vault for cards, passwords and ID documents that you never see, and a purchase gate.
 Use these browser_* tools for any task on the web that needs the user's accounts, forms, checkout or downloads. Never ask for passwords, card numbers, CVV or ID numbers in chat: use vault_request. Never pay without purchase_propose and the user's approval. Read the "inskit" skill for the full playbook.`;
 var server = new McpServer({ name: "inskit", title: BRAND, version: VERSION }, { instructions: INSTRUCTIONS });

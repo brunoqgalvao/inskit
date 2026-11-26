@@ -12,8 +12,12 @@ import { TOOLS, type ToolResult } from './tools.ts';
 const cfg = loadConfig();
 const client = new DaemonClient(cfg);
 const session = randomUUID();
-/** This chat runs inside the owner's own app: approvals and secrets go there, never to chat, a prompt or a local page. */
-const ownerApp = process.env.INSTINCT_APPROVAL === 'owner';
+/**
+ * This chat runs inside the owner's own app: approvals and secrets go there, never to chat, a prompt or a local page.
+ * Its own variable, read only here: the daemon this shim may start inherits the environment, and one chat must not
+ * switch every other chat's approval mode (that is INSTINCT_APPROVAL=owner, in config.json).
+ */
+const ownerApp = process.env.INSTINCT_OWNER_APP === '1';
 
 const INSTRUCTIONS = `${BRAND} gives you a Browser Use Cloud or local browser (check agent_status), with reusable website logins, a vault for cards, passwords and ID documents that you never see, and a purchase gate.
 Use these browser_* tools for any task on the web that needs the user's accounts, forms, checkout or downloads. Never ask for passwords, card numbers, CVV or ID numbers in chat: use vault_request. Never pay without purchase_propose and the user's approval. Read the "inskit" skill for the full playbook.`;

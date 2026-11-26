@@ -83,7 +83,7 @@ The CLI ships inside the plugin: `node ~/.codex/plugins/cache/inskit/inskit/<ver
 | `INSTINCT_HEADLESS` | 0 | `1` on servers without a screen |
 | `INSTINCT_CDP_URL` | – | Attach to an existing Chrome (`--remote-debugging-port`) |
 | `INSTINCT_PUBLIC_URL` | http://127.0.0.1:17700 | Where vault and approval pages are reachable (e.g. a Tailscale address for a VM) |
-| `INSTINCT_APPROVAL` | chat | `page` asks for purchase approval on a local page. `owner` hands it to your own app: the agent cannot record approval, only the owner API can (token in `~/.instinct/owner.key`, see `src/owner.ts`), with the local home page as the reserve. Set in a chat's environment it holds for that chat; in `config.json`, for every chat |
+| `INSTINCT_APPROVAL` | chat | `page` asks for purchase approval on a local page. `owner` hands it to your own app: the agent cannot record approval, only the owner API can (token in `~/.instinct/owner.key`, see `src/owner.ts`), with the local home page as the reserve. That is for every chat; `INSTINCT_OWNER_APP=1` in one chat's environment does the same for that chat only |
 | `INSTINCT_COOKIE_SYNC` | 1 with local Chrome on macOS | Copy each site's logins on first visit |
 | `INSTINCT_CHROME_PROFILE`, `INSTINCT_CHROME_PATH` | – | Which profile to copy logins from; browser binary |
 | `INSKIT_LUNA_BASE_URL` / `ANTHROPIC_API_KEY` | – | Optional inner model for unclear login pages and `browser_delegate` (an OpenAI-compatible Responses endpoint, or Claude Haiku). Off when neither is set |

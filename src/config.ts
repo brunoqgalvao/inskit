@@ -30,6 +30,7 @@ export type Config = {
   /**
    * How purchase approval is asked when Codex shows no native prompt: in the chat (default), on a local page, or in the
    * owner's own app (owner): the agent cannot record approval, only the owner API (src/owner.ts) or the local page can.
+   * One chat alone gets the same with INSTINCT_OWNER_APP=1 in its shim's environment (src/server.ts).
    */
   approval: 'chat' | 'page' | 'owner';
 };

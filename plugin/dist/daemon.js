@@ -26,7 +26,7 @@ import { existsSync, readFileSync } from "node:fs";
 // src/brand.ts
 var BRAND = process.env.INSTINCT_BRAND || "inskit";
 var VERSION = "0.3.0";
-var BUILD_ID = true ? "1795696876548" : "dev";
+var BUILD_ID = true ? "1795696917412" : "dev";
 
 // src/config.ts
 function expandHome(path) {

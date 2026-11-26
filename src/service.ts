@@ -29,7 +29,7 @@ export function openInBrowser(url: string) {
   return new Promise<boolean>(resolve => execFile(cmd, args, error => resolve(!error)));
 }
 
-/** Per-call options from the MCP shim. ownerApp: this chat runs inside the owner's own app (INSTINCT_APPROVAL=owner). */
+/** Per-call options from the MCP shim. ownerApp: this chat runs inside the owner's own app (INSTINCT_OWNER_APP=1). */
 export type CallOpts = { nativeApproval?: boolean; ownerApp?: boolean };
 
 export class Service {
