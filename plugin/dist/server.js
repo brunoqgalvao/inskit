@@ -36490,7 +36490,7 @@ import { existsSync, readFileSync } from "node:fs";
 // src/brand.ts
 var BRAND = process.env.INSTINCT_BRAND || "inskit";
 var VERSION = "0.3.0";
-var BUILD_ID = true ? "1792290291677" : "dev";
+var BUILD_ID = true ? "1795696876548" : "dev";
 
 // src/config.ts
 function expandHome(path) {
@@ -36550,7 +36550,7 @@ function loadConfig() {
     // Existing installs keep their folder; new ones get one named after the plugin.
     downloadsDir: expandHome(env.INSTINCT_DOWNLOADS || (existsSync(expandHome("~/Downloads/Instinct")) ? "~/Downloads/Instinct" : "~/Downloads/" + BRAND)),
     browserIdleMinutes: Number(env.INSTINCT_BROWSER_IDLE_MIN || (browserUse ? 5 : 45)),
-    approval: env.INSTINCT_APPROVAL === "page" ? "page" : "chat"
+    approval: env.INSTINCT_APPROVAL === "page" ? "page" : env.INSTINCT_APPROVAL === "owner" ? "owner" : "chat"
   };
 }
 
@@ -36645,7 +36645,7 @@ var DaemonClient = class {
         const res = await fetch(`http://127.0.0.1:${info.port}/api/call`, {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${info.token}` },
-          body: JSON.stringify({ session: session2, name, args, nativeApproval: opts.nativeApproval }),
+          body: JSON.stringify({ session: session2, name, args, nativeApproval: opts.nativeApproval, ownerApp: opts.ownerApp }),
           signal: AbortSignal.timeout(opts.timeoutMs ?? 12e4)
         });
         if (res.status === 401) {
@@ -36796,6 +36796,7 @@ var TOOL_NAMES = new Set(TOOLS.map((t) => t.name));
 var cfg = loadConfig();
 var client = new DaemonClient(cfg);
 var session = randomUUID();
+var ownerApp = process.env.INSTINCT_APPROVAL === "owner";
 var INSTRUCTIONS = `${BRAND} gives you a Browser Use Cloud or local browser (check agent_status), with reusable website logins, a vault for cards, passwords and ID documents that you never see, and a purchase gate.
 Use these browser_* tools for any task on the web that needs the user's accounts, forms, checkout or downloads. Never ask for passwords, card numbers, CVV or ID numbers in chat: use vault_request. Never pay without purchase_propose and the user's approval. Read the "inskit" skill for the full playbook.`;
 var server = new McpServer({ name: "inskit", title: BRAND, version: VERSION }, { instructions: INSTRUCTIONS });
@@ -36808,7 +36809,7 @@ server.server.oninitialized = () => {
   }
 };
 function supportsElicitation() {
-  if (process.env.INSTINCT_NATIVE_APPROVAL === "0") return false;
+  if (ownerApp || process.env.INSTINCT_NATIVE_APPROVAL === "0") return false;
   return !!server.server.getClientCapabilities()?.elicitation;
 }
 async function askApproval(orderId, summary) {
@@ -36852,7 +36853,7 @@ for (const tool of TOOLS) {
         await client.call(session, "__decide", { order_id: orderId, approve: approved, via: "Codex approval prompt" });
         return withText(proposed, approved ? "The user approved in Codex. Fill payment if needed, check the total is unchanged, then purchase_submit." : "The user declined. Do not buy. Ask what they want instead.");
       }
-      return await client.call(session, tool.name, args, { timeoutMs });
+      return await client.call(session, tool.name, args, { timeoutMs, ownerApp });
     } catch (error62) {
       return { content: [{ type: "text", text: `Error: ${error62 instanceof Error ? error62.message : String(error62)}` }], isError: true };
     }

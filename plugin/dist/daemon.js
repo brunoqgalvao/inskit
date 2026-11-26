@@ -14,9 +14,9 @@ process.emitWarning = ((warning, ...rest) => {
 
 // src/daemon.ts
 import { createServer } from "node:http";
-import { randomBytes as randomBytes4 } from "node:crypto";
-import { chmodSync as chmodSync2, mkdirSync as mkdirSync5, writeFileSync as writeFileSync3 } from "node:fs";
-import { join as join8 } from "node:path";
+import { randomBytes as randomBytes5 } from "node:crypto";
+import { chmodSync as chmodSync3, mkdirSync as mkdirSync6, writeFileSync as writeFileSync4 } from "node:fs";
+import { join as join9 } from "node:path";
 
 // src/config.ts
 import { homedir, platform } from "node:os";
@@ -26,7 +26,7 @@ import { existsSync, readFileSync } from "node:fs";
 // src/brand.ts
 var BRAND = process.env.INSTINCT_BRAND || "inskit";
 var VERSION = "0.3.0";
-var BUILD_ID = true ? "1792290291677" : "dev";
+var BUILD_ID = true ? "1795696876548" : "dev";
 
 // src/config.ts
 function expandHome(path) {
@@ -86,7 +86,7 @@ function loadConfig() {
     // Existing installs keep their folder; new ones get one named after the plugin.
     downloadsDir: expandHome(env.INSTINCT_DOWNLOADS || (existsSync(expandHome("~/Downloads/Instinct")) ? "~/Downloads/Instinct" : "~/Downloads/" + BRAND)),
     browserIdleMinutes: Number(env.INSTINCT_BROWSER_IDLE_MIN || (browserUse ? 5 : 45)),
-    approval: env.INSTINCT_APPROVAL === "page" ? "page" : "chat"
+    approval: env.INSTINCT_APPROVAL === "page" ? "page" : env.INSTINCT_APPROVAL === "owner" ? "owner" : "chat"
   };
 }
 
@@ -129,6 +129,10 @@ var Db = class {
     this.sql = new (sqlite()).DatabaseSync(path);
     this.sql.exec("pragma journal_mode = wal; pragma busy_timeout = 3000;");
     this.sql.exec(schema);
+    try {
+      this.sql.exec("alter table orders add column approval_mode text");
+    } catch {
+    }
   }
   get(key) {
     const row = this.sql.prepare("select value from kv where key = ?").get(key);
@@ -716,6 +720,7 @@ function rowToOrder(r) {
     storeOrderNumber: r.store_order_number ?? void 0,
     paidTotalCents: r.paid_total_cents ?? void 0,
     failure: r.failure ?? void 0,
+    approvalMode: r.approval_mode === "owner" ? "owner" : void 0,
     createdAt: r.created_at
   };
 }
@@ -742,7 +747,10 @@ var Purchases = class {
     this.db.audit("order.update", { id, ...fields });
     return this.get(id);
   }
-  propose(storeName, storeUrl, currency, quote) {
+  awaiting() {
+    return this.list(20).filter((o) => o.status === "awaiting_approval");
+  }
+  propose(storeName, storeUrl, currency, quote, approvalMode) {
     const host = hostOf(storeUrl);
     if (!host) throw new Error("Invalid store_url");
     if (!quote.items.length) throw new Error("List the items.");
@@ -753,10 +761,10 @@ var Purchases = class {
     this.db.sql.prepare(`update orders set status = 'cancelled', failure = 'replaced by a newer proposal', updated_at = ? where status in ('awaiting_approval', 'approved') and store_host = ?`).run(Date.now(), host);
     const id = "ord_" + randomBytes3(5).toString("hex");
     const now = Date.now();
-    this.db.sql.prepare(`insert into orders (id, status, store_name, store_url, store_host, currency, quote, total_cents, created_at, updated_at)
-      values (?, 'awaiting_approval', ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, storeName, storeUrl, host, currency.toUpperCase(), JSON.stringify(quote), quote.totalCents, now, now);
+    this.db.sql.prepare(`insert into orders (id, status, store_name, store_url, store_host, currency, quote, total_cents, approval_mode, created_at, updated_at)
+      values (?, 'awaiting_approval', ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, storeName, storeUrl, host, currency.toUpperCase(), JSON.stringify(quote), quote.totalCents, approvalMode ?? null, now, now);
     this.db.audit("order.proposed", { id, storeName, host, totalCents: quote.totalCents, currency });
-    return { order: this.get(id), token: this.issueToken(id) };
+    return { order: this.get(id) };
   }
   /** A fresh approval-page token for an order still awaiting approval. */
   issueToken(id) {
@@ -768,10 +776,17 @@ var Purchases = class {
     const id = this.approvalTokens.get(token2);
     return id ? this.get(id) : void 0;
   }
-  /** Called by the approval page, a native Codex approval prompt, or purchase_approve with the user's chat reply. */
-  decide(id, approve, evidence) {
+  /**
+   * by owner: the approval page or the owner API. by agent: a native Codex approval prompt, or purchase_approve with the
+   * user's chat reply; refused for an order proposed in owner mode, whatever the session that asks.
+   */
+  decide(id, approve, evidence, by = "agent") {
     const order = this.get(id);
     if (!order) throw new Error("Order not found");
+    if (order.approvalMode === "owner" && by !== "owner") {
+      this.db.audit("order.self_approval_refused", { id, approve });
+      throw new Error("Only the owner decides this order, in their own app. You cannot record the approval. Call purchase_wait.");
+    }
     if (order.status !== "awaiting_approval") throw new Error(`Order is ${order.status}, not awaiting approval.`);
     for (const [token2, orderId] of this.approvalTokens) if (orderId === id) this.approvalTokens.delete(token2);
     return approve ? this.update(id, { status: "approved", approval_evidence: evidence.slice(0, 300), approved_at: Date.now() }) : this.update(id, { status: "rejected", approval_evidence: evidence.slice(0, 300) });
@@ -22411,17 +22426,36 @@ ${await this.browser.snapshot(session, 6e3)}`;
   link(path) {
     return `${this.cfg.publicUrl}${path}`;
   }
+  /** Approvals, secrets and handovers go through the owner's app: for the whole daemon, or for this chat only. */
+  owned(opts) {
+    return this.cfg.approval === "owner" || !!opts.ownerApp;
+  }
+  /** The agent browser never opens the daemon's own pages (vault, approval, home): those are for the human. */
+  refuseOwnPages(url2) {
+    const target = String(url2 ?? "");
+    let host = "";
+    try {
+      host = new URL(/^[a-z]+:\/\//i.test(target) ? target : `https://${target}`).host;
+    } catch {
+      return;
+    }
+    const own2 = /* @__PURE__ */ new Set([`127.0.0.1:${this.cfg.port}`, `localhost:${this.cfg.port}`, `[::1]:${this.cfg.port}`, new URL(this.cfg.publicUrl).host]);
+    if (own2.has(host)) throw new Error("That is a private page for the user (vault and approvals). The agent browser does not open it.");
+  }
   /** Opens a private page for the human. Returns text for the agent (without the URL when opened locally). */
-  async present(path, what) {
+  async present(path, what, opts = {}) {
     const url2 = this.link(path);
-    if (this.cfg.openLinks && await openInBrowser(url2)) return `A secure page for ${what} just opened in the user's browser.`;
+    if (!this.owned(opts) && this.cfg.openLinks && await openInBrowser(url2)) return `A secure page for ${what} just opened in the user's browser.`;
     return `Give the user this link for ${what} (it works once): ${url2}`;
   }
   /** Next step after a proposal when no native prompt answered: ask in chat, or open the approval page. */
-  async askApproval(order) {
+  async askApproval(order, opts = {}) {
+    if (order.approvalMode === "owner") {
+      return `The owner approves this in their own app, not in chat: you cannot approve it yourself. Now pass order_id="${order.id}" to the purchase approval tool of the app you run in (in mesa: purchase_request), then call purchase_wait with order_id="${order.id}".`;
+    }
     const token2 = this.purchases.issueToken(order.id);
     if (this.cfg.approval === "page") {
-      return `${await this.present(`/a/${token2}`, "approving this purchase")} Tell the user in one line, then call purchase_wait with order_id="${order.id}".`;
+      return `${await this.present(`/a/${token2}`, "approving this purchase", opts)} Tell the user in one line, then call purchase_wait with order_id="${order.id}".`;
     }
     return `Approval in chat: show the user this order (items, total, delivery date, address, card brand and last 4) and ask whether to buy it. End your turn and wait for their reply; do not call purchase_wait. When their next message answers it, call purchase_approve with order_id="${order.id}", approve, and their exact words. If they prefer to approve on a page, give them this one-time link: ${this.link(`/a/${token2}`)}`;
   }
@@ -22429,6 +22463,7 @@ ${await this.browser.snapshot(session, 6e3)}`;
     const b = this.browser;
     switch (name) {
       case "browser_navigate":
+        this.refuseOwnPages(a.url);
         return b.navigate(session, a.url);
       case "browser_snapshot":
         return b.snapshot(session, a.max_chars);
@@ -22450,6 +22485,7 @@ ${await this.browser.snapshot(session, 6e3)}`;
       case "browser_wait":
         return b.wait(session, a.seconds, a.text);
       case "browser_tabs":
+        if (a.url) this.refuseOwnPages(a.url);
         return b.tabs(session, a.action, a.index, a.url);
       case "browser_screenshot":
         return { content: [{ type: "image", data: await b.screenshot(session), mimeType: "image/jpeg" }] };
@@ -22464,6 +22500,7 @@ ${await this.browser.snapshot(session, 6e3)}`;
         const r = await runDelegate(model, {
           snapshot: () => b.snapshot(session, 9e3),
           navigate: async (url2) => {
+            this.refuseOwnPages(url2);
             await b.navigate(session, url2);
           },
           click: async (ref2) => {
@@ -22496,6 +22533,9 @@ ${await this.browser.snapshot(session, 6e3)}`;
       case "browser_hand_over": {
         const url2 = await b.show(session);
         this.db.audit("handover", { reason: a.reason, url: url2 });
+        if (this.owned(opts) && this.cfg.browserUse && b.liveUrl) {
+          return `The cloud browser is ready for the owner on ${hostOf(url2)}. Do not paste a link in chat: call the browser handover tool of the app you run in (in mesa: browser_handoff) with this reason, so the owner gets the live browser there: ${a.reason}. Wait for their reply, then take a fresh snapshot.`;
+        }
         if (this.cfg.browserUse) return b.liveUrl ? `Ask the user to open the cloud browser at ${b.liveUrl} and complete this step: ${a.reason}. Wait for their reply, then take a fresh snapshot.` : "The cloud browser did not return a live preview link. Ask the user to open its session in Browser Use Cloud.";
         return this.cfg.cdpUrl || this.cfg.headless ? `The browser is not visible on the user's screen (${b.mode}). Ask them to do it on their own device if possible: ${a.reason}` : `The agent browser window is in front on ${hostOf(url2)}. Tell the user exactly what to do, wait for their reply, then take a fresh snapshot.`;
       }
@@ -22529,7 +22569,10 @@ Current source: ${current?.browser ?? "first found"} / ${current?.profile ?? "la
       }
       case "vault_request": {
         const request = this.vault.createRequest({ kind: a.kind, purpose: a.purpose, origin: a.origin, itemId: a.item_id });
-        const shown = await this.present(`/v/${request.token}`, a.kind === "cvv" ? "the CVV" : a.kind);
+        if (this.owned(opts)) {
+          return `Request ${request.id}. The owner types this in their own app, never in chat. Now pass request_id="${request.id}" to the secret request tool of the app you run in (in mesa: secret_request), then call vault_wait with request_id="${request.id}".`;
+        }
+        const shown = await this.present(`/v/${request.token}`, a.kind === "cvv" ? "the CVV" : a.kind, opts);
         return `${shown} Request ${request.id}. Tell the user in one line, then call vault_wait with request_id="${request.id}".`;
       }
       case "vault_wait": {
@@ -22578,7 +22621,7 @@ Current source: ${current?.browser ?? "first found"} / ${current?.profile ?? "la
         if (typeof a.evidence !== "string" || a.evidence.length < 4 || a.evidence.length > 200 || !visible.includes(a.evidence) || a.evidence.includes("[hidden by vault]")) throw new Error("Evidence is not visible on the current page. Take a fresh snapshot.");
         const r = this.vault.loginFeedback(item.id, { state: a.state, reason: a.reason });
         this.loginSessions.set(session, item.id);
-        return `Login status: ${r.login.state}. Request ${r.id}. ${a.show_page ? await this.present(`/v/${r.token}`, "login status") : "The vault page updates automatically."}`;
+        return `Login status: ${r.login.state}. Request ${r.id}. ${a.show_page ? await this.present(`/v/${r.token}`, "login status", opts) : "The vault page updates automatically."}`;
       }
       case "vault_login_challenge": {
         const url2 = await b.currentUrl(session);
@@ -22586,7 +22629,7 @@ Current source: ${current?.browser ?? "first found"} / ${current?.profile ?? "la
         if (typeof a.evidence !== "string" || a.evidence.length < 4 || a.evidence.length > 200 || !visible.includes(a.evidence) || a.evidence.includes("[hidden by vault]")) throw new Error("Challenge evidence is not visible on the current page.");
         const { request, challenge } = this.vault.createChallenge(a.item_id, session, url2, a);
         this.loginSessions.set(session, a.item_id);
-        const where = this.vault.loginPageOpen(a.item_id) ? "The verification field appeared on the vault page the user already has open." : await this.present(`/v/${request.token}`, a.method === "app" ? "confirming the app approval" : "typing the verification code");
+        const where = this.vault.loginPageOpen(a.item_id) ? "The verification field appeared on the vault page the user already has open." : await this.present(`/v/${request.token}`, a.method === "app" ? "confirming the app approval" : "typing the verification code", opts);
         return `${where} challenge_id="${challenge.id}". Call vault_challenge_wait now; do not ask for a code in chat.`;
       }
       case "vault_challenge_code": {
@@ -22643,6 +22686,7 @@ Current source: ${current?.browser ?? "first found"} / ${current?.profile ?? "la
         return `Filled ${a.field} from "${item.label}" (value hidden).`;
       }
       case "purchase_propose": {
+        const owned = this.owned(opts);
         const { order } = this.purchases.propose(a.store_name, a.store_url, a.currency, {
           items: a.items.map((i) => ({ name: i.name, quantity: i.quantity, unitPriceCents: i.unit_price_cents })),
           subtotalCents: a.subtotal_cents,
@@ -22655,16 +22699,16 @@ Current source: ${current?.browser ?? "first found"} / ${current?.profile ?? "la
           address: a.address,
           paymentMethod: a.payment_method,
           notes: a.notes
-        });
+        }, owned ? "owner" : void 0);
         const summary = `${order.storeName}: ${order.quote.items.map((i) => `${i.quantity}\xD7 ${i.name}`).join(", ")} \u2014 total ${money(order.totalCents, order.currency)}, ${order.quote.paymentMethod}, delivery ${order.quote.deliveryEstimate} to ${order.quote.address}`;
         const structured = { orderId: order.id, summary };
-        if (opts.nativeApproval) return { content: [{ type: "text", text: `Proposal ${order.id}: ${summary}` }], structuredContent: structured };
-        return { content: [{ type: "text", text: `Proposal ${order.id}: ${summary}. ${await this.askApproval(order)}` }], structuredContent: structured };
+        if (opts.nativeApproval && !owned) return { content: [{ type: "text", text: `Proposal ${order.id}: ${summary}` }], structuredContent: structured };
+        return { content: [{ type: "text", text: `Proposal ${order.id}: ${summary}. ${await this.askApproval(order, opts)}` }], structuredContent: structured };
       }
       case "__open_approval": {
         const order = this.purchases.get(a.order_id);
         if (!order || order.status !== "awaiting_approval") throw new Error("No proposal awaiting approval.");
-        return this.askApproval(order);
+        return this.askApproval(order, opts);
       }
       case "__decide": {
         const order = this.purchases.decide(a.order_id, !!a.approve, a.via ?? "native prompt");
@@ -22684,6 +22728,7 @@ Current source: ${current?.browser ?? "first found"} / ${current?.profile ?? "la
           if (order.status === "approved") return `Approved by the user. Fill payment if needed, check the total is still ${money(order.totalCents, order.currency)}, then purchase_submit.`;
           if (order.status === "rejected") return "The user declined. Do not buy. Ask what they want instead.";
           if (order.status !== "awaiting_approval") return `Order is ${order.status}${order.failure ? `: ${order.failure}` : ""}.`;
+          if (Date.now() > deadline && order.approvalMode === "owner") return `No decision yet: the owner has not answered in their app. Call purchase_wait again; do not ask for approval in chat.`;
           if (Date.now() > deadline) return `No decision yet. Call purchase_wait again, or ask the user in chat and record their answer with purchase_approve (order_id="${order.id}").`;
           await sleep2(800);
         }
@@ -22811,11 +22856,12 @@ function approvalPage(order, error62) {
 <form method=post><button name=decision value=approve type=submit>Approve ${m(q.totalCents)}</button><button class=secondary name=decision value=reject type=submit>Don't buy</button></form>
 <p class=fine>Codex can only place this exact order, at this store, while this total is on the checkout page.</p>`, true);
 }
-function homePage(items, orders, status) {
+function homePage(items, orders, awaiting, status) {
+  const waiting = awaiting.length ? `<h2>Waiting for your approval</h2><ul class=list>${awaiting.map((o) => `<li><span>${esc2(o.storeName)} \xB7 ${esc2(money(o.totalCents, o.currency))}</span><form method=post action="/orders/${esc2(o.id)}/review"><button type=submit>Review</button></form></li>`).join("")}</ul>` : "";
   const vault2 = items.length ? `<ul class=list>${items.map((i) => `<li><span>${esc2(i.label)} <span class=pill>${esc2(i.kind)}</span></span><form method=post action="/items/${esc2(i.id)}/delete"><button class=secondary type=submit>Remove</button></form></li>`).join("")}</ul>` : "<p>Empty.</p>";
   const recent = orders.length ? `<ul class=list>${orders.map((o) => `<li><span>${esc2(o.storeName)} \xB7 ${esc2(money(o.totalCents, o.currency))}</span><span class=pill>${esc2(o.status.replace("_", " "))}</span></li>`).join("")}</ul>` : "<p>None yet.</p>";
   return shell("Home", `<h1>${esc2(BRAND)} for Codex</h1><p>Browser: ${esc2(status.browser)} \xB7 Logins: ${esc2(status.cookies)}</p>
-<a class=btn href="/new/card">Add a card</a><a class="btn secondary" href="/new/identity">Add an ID document</a>
+${waiting}<a class=btn href="/new/card">Add a card</a><a class="btn secondary" href="/new/identity">Add an ID document</a>
 <h2>Vault</h2>${vault2}<h2>Recent purchases</h2>${recent}`, true);
 }
 function loginStatusPage(request, challenge) {
@@ -22913,15 +22959,114 @@ setTimeout(poll,1000);
 </script>`);
 }
 
+// src/owner.ts
+import { randomBytes as randomBytes4, timingSafeEqual } from "node:crypto";
+import { chmodSync as chmodSync2, existsSync as existsSync8, mkdirSync as mkdirSync5, readFileSync as readFileSync7, writeFileSync as writeFileSync3 } from "node:fs";
+import { join as join8 } from "node:path";
+var ownerKeyFile = (home) => join8(home, "owner.key");
+function ownerToken(home) {
+  const file2 = ownerKeyFile(home);
+  if (existsSync8(file2)) {
+    const saved = readFileSync7(file2, "utf8").trim();
+    if (saved.length >= 32) return saved;
+  }
+  mkdirSync5(home, { recursive: true, mode: 448 });
+  const token2 = randomBytes4(32).toString("base64url");
+  writeFileSync3(file2, token2 + "\n", { mode: 384 });
+  chmodSync2(file2, 384);
+  return token2;
+}
+var KINDS = /* @__PURE__ */ new Set(["card", "login", "identity", "cvv"]);
+function same(a, b) {
+  const x = Buffer.from(a), y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+}
+function publicOrder(o) {
+  return {
+    id: o.id,
+    status: o.status,
+    storeName: o.storeName,
+    storeHost: o.storeHost,
+    storeUrl: o.storeUrl,
+    currency: o.currency,
+    totalCents: o.totalCents,
+    quote: o.quote,
+    createdAt: o.createdAt,
+    approvedAt: o.approvedAt ?? null,
+    storeOrderNumber: o.storeOrderNumber ?? null,
+    failure: o.failure ?? null
+  };
+}
+function ownerApi(deps) {
+  const { vault: vault2, purchases: purchases2 } = deps;
+  return async (method, path, authorization, body) => {
+    if (!authorization?.startsWith("Bearer ") || !same(authorization.slice(7), deps.token)) return { status: 401, body: { error: "unauthorized" } };
+    const json2 = async () => {
+      try {
+        const v = JSON.parse(await body());
+        return v && typeof v === "object" ? v : {};
+      } catch {
+        return {};
+      }
+    };
+    if (path === "/owner/status" && method === "GET") {
+      const b = deps.browser;
+      return { status: 200, body: { ok: true, version: VERSION, build: BUILD_ID, approval: deps.cfg.approval, browser: { running: b.running, mode: b.mode, liveUrl: b.liveUrl ?? null } } };
+    }
+    const order = path.match(/^\/owner\/orders\/(ord_\w+)(\/decide)?$/);
+    if (order) {
+      const found = purchases2.get(order[1]);
+      if (!found) return { status: 404, body: { error: "Order not found" } };
+      if (!order[2] && method === "GET") return { status: 200, body: { order: publicOrder(found) } };
+      if (order[2] && method === "POST") {
+        const input2 = await json2();
+        if (typeof input2.approve !== "boolean") return { status: 400, body: { error: "approve must be true or false" } };
+        if (found.status !== "awaiting_approval") return { status: 409, body: { error: `Order is ${found.status}, not awaiting approval.`, order: publicOrder(found) } };
+        const via = typeof input2.via === "string" && input2.via.trim() ? input2.via.trim().slice(0, 80) : "owner app";
+        const decided = purchases2.decide(found.id, input2.approve, `${via}: ${input2.approve ? "approve" : "reject"}`, "owner");
+        return { status: 200, body: { order: publicOrder(decided) } };
+      }
+      return { status: 405, body: { error: "method not allowed" } };
+    }
+    if (path === "/owner/vault" && method === "GET") return { status: 200, body: { items: vault2.list() } };
+    const request = path.match(/^\/owner\/vault\/requests\/(req_\w+)$/);
+    if (request && method === "GET") {
+      const r = vault2.requestById(request[1]);
+      if (!r) return { status: 404, body: { error: "Request not found" } };
+      return { status: 200, body: { request: { id: r.id, kind: r.kind, purpose: r.purpose, origin: r.origin ?? null, status: r.status, cardLabel: r.itemId ? vault2.item(r.itemId)?.label ?? null : null } } };
+    }
+    if (path === "/owner/vault" && method === "POST") {
+      const input2 = await json2();
+      const fields = {};
+      for (const [k, v] of Object.entries(input2.fields && typeof input2.fields === "object" ? input2.fields : {})) {
+        if (typeof v === "string") fields[k] = v;
+        else if (typeof v === "boolean") fields[k] = v ? "true" : "";
+      }
+      try {
+        const pending = typeof input2.request_id === "string" ? vault2.requestById(input2.request_id) : void 0;
+        if (typeof input2.request_id === "string" && !pending) return { status: 404, body: { error: "Request not found" } };
+        if (!pending && !KINDS.has(input2.kind)) return { status: 400, body: { error: "kind must be card, login, identity or cvv" } };
+        const target = pending ?? vault2.createRequest({ kind: input2.kind, purpose: String(input2.purpose ?? "Added in the owner app"), origin: typeof input2.origin === "string" ? input2.origin : void 0, itemId: typeof input2.item_id === "string" ? input2.item_id : void 0 });
+        const { itemId } = vault2.submit(target.token, fields);
+        return { status: 200, body: { item: vault2.item(itemId) ?? null, request_id: target.id } };
+      } catch (error62) {
+        return { status: 400, body: { error: error62 instanceof Error ? error62.message : "Could not save." } };
+      }
+    }
+    return { status: 404, body: { error: "not found" } };
+  };
+}
+
 // src/daemon.ts
 var cfg = loadConfig();
-mkdirSync5(cfg.home, { recursive: true, mode: 448 });
-var db = new Db(join8(cfg.home, "instinct.db"));
+mkdirSync6(cfg.home, { recursive: true, mode: 448 });
+var db = new Db(join9(cfg.home, "instinct.db"));
 var vault = new Vault(db, Sealer.fromHome(cfg.home));
 var purchases = new Purchases(db);
 var browser = new AgentBrowser(cfg);
 var service = new Service(cfg, db, browser, vault, purchases);
-var token = randomBytes4(24).toString("base64url");
+var token = randomBytes5(24).toString("base64url");
+var owner = ownerApi({ token: ownerToken(cfg.home), cfg, vault, purchases, browser });
 var allowedHosts = /* @__PURE__ */ new Set([`127.0.0.1:${cfg.port}`, `localhost:${cfg.port}`, new URL(cfg.publicUrl).host]);
 function send(res, status, body, type = "text/html; charset=utf-8", headers = {}) {
   res.writeHead(status, {
@@ -22958,12 +23103,16 @@ var server = createServer(async (req, res) => {
   try {
     const url2 = new URL(req.url ?? "/", "http://local");
     const path = url2.pathname;
+    if (path.startsWith("/owner/")) {
+      const out = await owner(req.method ?? "GET", path, req.headers.authorization, () => readBody(req, 64e3));
+      return send(res, out.status, JSON.stringify(out.body), "application/json");
+    }
     if (path.startsWith("/api/")) {
       if (path === "/api/health") return send(res, 200, JSON.stringify({ ok: true, version: VERSION, build: BUILD_ID, pid: process.pid }), "application/json");
       if (req.headers.authorization !== `Bearer ${token}`) return send(res, 401, '{"error":"unauthorized"}', "application/json");
       if (path === "/api/call" && req.method === "POST") {
-        const { session, name, args, nativeApproval } = JSON.parse(await readBody(req));
-        const result = await service.call(String(session || "default"), String(name), args, { nativeApproval: !!nativeApproval });
+        const { session, name, args, nativeApproval, ownerApp } = JSON.parse(await readBody(req));
+        const result = await service.call(String(session || "default"), String(name), args, { nativeApproval: !!nativeApproval, ownerApp: !!ownerApp });
         return send(res, 200, JSON.stringify(result), "application/json");
       }
       if (path === "/api/shutdown" && req.method === "POST") {
@@ -23028,7 +23177,7 @@ var server = createServer(async (req, res) => {
         if (!order) return send(res, 404, approvalPage(void 0));
         const decision = form(await readBody(req)).decision;
         try {
-          purchases.decide(order.id, decision === "approve", `approval page: ${decision}`);
+          purchases.decide(order.id, decision === "approve", `approval page: ${decision}`, "owner");
           return send(res, 200, decision === "approve" ? donePage("Approved", "Codex will now place this exact order. You can close this tab.") : donePage("Not buying", "Got it. Codex will not place this order."));
         } catch (error62) {
           return send(res, 409, approvalPage(order, error62 instanceof Error ? error62.message : String(error62)));
@@ -23038,12 +23187,18 @@ var server = createServer(async (req, res) => {
     }
     if (path === "/" && req.method === "GET") {
       const synced = db.sql.prepare("select count(*) n from cookie_sync").get().n;
-      return send(res, 200, homePage(vault.list(), purchases.list(8), { browser: browser.running ? "open" : "idle", cookies: `${synced} sites imported` }));
+      return send(res, 200, homePage(vault.list(), purchases.list(8), purchases.awaiting(), { browser: browser.running ? "open" : "idle", cookies: `${synced} sites imported` }));
     }
     const newMatch = path.match(/^\/new\/(card|identity)$/);
     if (newMatch && req.method === "GET") {
       const request = vault.createRequest({ kind: newMatch[1], purpose: newMatch[1] === "card" ? "Add a card" : "Add an ID document" });
       return send(res, 303, "", "text/plain", { location: `/v/${request.token}` });
+    }
+    const reviewMatch = path.match(/^\/orders\/(ord_\w+)\/review$/);
+    if (reviewMatch && req.method === "POST") {
+      const order = purchases.get(reviewMatch[1]);
+      if (!order || order.status !== "awaiting_approval") return send(res, 303, "", "text/plain", { location: "/" });
+      return send(res, 303, "", "text/plain", { location: `/a/${purchases.issueToken(order.id)}` });
     }
     const deleteMatch = path.match(/^\/items\/([\w-]+)\/delete$/);
     if (deleteMatch && req.method === "POST") {
@@ -23063,9 +23218,9 @@ server.on("error", (error62) => {
   throw error62;
 });
 server.listen(cfg.port, cfg.host, () => {
-  const info = join8(cfg.home, "daemon.json");
-  writeFileSync3(info, JSON.stringify({ port: cfg.port, token, pid: process.pid, build: BUILD_ID }), { mode: 384 });
-  chmodSync2(info, 384);
+  const info = join9(cfg.home, "daemon.json");
+  writeFileSync4(info, JSON.stringify({ port: cfg.port, token, pid: process.pid, build: BUILD_ID }), { mode: 384 });
+  chmodSync3(info, 384);
   db.audit("daemon.start", { pid: process.pid, build: BUILD_ID });
   console.error(`instinct daemon ${VERSION} (${BUILD_ID}) on ${cfg.host}:${cfg.port}`);
 });

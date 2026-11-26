@@ -79,14 +79,14 @@ export class DaemonClient {
     return info;
   }
 
-  async call(session: string, name: string, args: unknown, opts: { nativeApproval?: boolean; timeoutMs?: number } = {}): Promise<ToolResult> {
+  async call(session: string, name: string, args: unknown, opts: { nativeApproval?: boolean; ownerApp?: boolean; timeoutMs?: number } = {}): Promise<ToolResult> {
     for (let attempt = 0; attempt < 2; attempt++) {
       const info = this.info ?? (await this.ensure());
       try {
         const res = await fetch(`http://127.0.0.1:${info.port}/api/call`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', authorization: `Bearer ${info.token}` },
-          body: JSON.stringify({ session, name, args, nativeApproval: opts.nativeApproval }),
+          body: JSON.stringify({ session, name, args, nativeApproval: opts.nativeApproval, ownerApp: opts.ownerApp }),
           signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000),
         });
         if (res.status === 401) { this.info = undefined; continue; }

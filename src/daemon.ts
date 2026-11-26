@@ -14,6 +14,7 @@ import { AgentBrowser } from './browser.ts';
 import { Service } from './service.ts';
 import { approvalPage, donePage, homePage, vaultPage, loginStatusPage } from './pages.ts';
 import { BUILD_ID, VERSION } from './brand.ts';
+import { ownerApi, ownerToken } from './owner.ts';
 
 const cfg = loadConfig();
 mkdirSync(cfg.home, { recursive: true, mode: 0o700 });
@@ -23,6 +24,7 @@ const purchases = new Purchases(db);
 const browser = new AgentBrowser(cfg);
 const service = new Service(cfg, db, browser, vault, purchases);
 const token = randomBytes(24).toString('base64url');
+const owner = ownerApi({ token: ownerToken(cfg.home), cfg, vault, purchases, browser });
 
 const allowedHosts = new Set([`127.0.0.1:${cfg.port}`, `localhost:${cfg.port}`, new URL(cfg.publicUrl).host]);
 
@@ -60,13 +62,19 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://local');
     const path = url.pathname;
 
+    // API for the owner's own app (bearer token from owner.key, which no MCP shim reads).
+    if (path.startsWith('/owner/')) {
+      const out = await owner(req.method ?? 'GET', path, req.headers.authorization, () => readBody(req, 64_000));
+      return send(res, out.status, JSON.stringify(out.body), 'application/json');
+    }
+
     // API for the MCP shims (bearer token from daemon.json).
     if (path.startsWith('/api/')) {
       if (path === '/api/health') return send(res, 200, JSON.stringify({ ok: true, version: VERSION, build: BUILD_ID, pid: process.pid }), 'application/json');
       if (req.headers.authorization !== `Bearer ${token}`) return send(res, 401, '{"error":"unauthorized"}', 'application/json');
       if (path === '/api/call' && req.method === 'POST') {
-        const { session, name, args, nativeApproval } = JSON.parse(await readBody(req));
-        const result = await service.call(String(session || 'default'), String(name), args, { nativeApproval: !!nativeApproval });
+        const { session, name, args, nativeApproval, ownerApp } = JSON.parse(await readBody(req));
+        const result = await service.call(String(session || 'default'), String(name), args, { nativeApproval: !!nativeApproval, ownerApp: !!ownerApp });
         return send(res, 200, JSON.stringify(result), 'application/json');
       }
       if (path === '/api/shutdown' && req.method === 'POST') {
@@ -135,7 +143,7 @@ const server = createServer(async (req, res) => {
         if (!order) return send(res, 404, approvalPage(undefined));
         const decision = form(await readBody(req)).decision;
         try {
-          purchases.decide(order.id, decision === 'approve', `approval page: ${decision}`);
+          purchases.decide(order.id, decision === 'approve', `approval page: ${decision}`, 'owner');
           return send(res, 200, decision === 'approve'
             ? donePage('Approved', 'Codex will now place this exact order. You can close this tab.')
             : donePage('Not buying', 'Got it. Codex will not place this order.'));
@@ -148,12 +156,19 @@ const server = createServer(async (req, res) => {
 
     if (path === '/' && req.method === 'GET') {
       const synced = (db.sql.prepare('select count(*) n from cookie_sync').get() as any).n;
-      return send(res, 200, homePage(vault.list(), purchases.list(8), { browser: browser.running ? 'open' : 'idle', cookies: `${synced} sites imported` }));
+      return send(res, 200, homePage(vault.list(), purchases.list(8), purchases.awaiting(), { browser: browser.running ? 'open' : 'idle', cookies: `${synced} sites imported` }));
     }
     const newMatch = path.match(/^\/new\/(card|identity)$/);
     if (newMatch && req.method === 'GET') {
       const request = vault.createRequest({ kind: newMatch[1] as 'card' | 'identity', purpose: newMatch[1] === 'card' ? 'Add a card' : 'Add an ID document' });
       return send(res, 303, '', 'text/plain', { location: `/v/${request.token}` });
+    }
+    // The reserve when the owner's app is away: the home page lists what waits and opens its approval page.
+    const reviewMatch = path.match(/^\/orders\/(ord_\w+)\/review$/);
+    if (reviewMatch && req.method === 'POST') {
+      const order = purchases.get(reviewMatch[1]);
+      if (!order || order.status !== 'awaiting_approval') return send(res, 303, '', 'text/plain', { location: '/' });
+      return send(res, 303, '', 'text/plain', { location: `/a/${purchases.issueToken(order.id)}` });
     }
     const deleteMatch = path.match(/^\/items\/([\w-]+)\/delete$/);
     if (deleteMatch && req.method === 'POST') {

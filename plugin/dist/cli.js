@@ -25,7 +25,7 @@ import { existsSync, readFileSync } from "node:fs";
 // src/brand.ts
 var BRAND = process.env.INSTINCT_BRAND || "inskit";
 var VERSION = "0.3.0";
-var BUILD_ID = true ? "1792290291677" : "dev";
+var BUILD_ID = true ? "1795696876548" : "dev";
 
 // src/config.ts
 function expandHome(path) {
@@ -85,7 +85,7 @@ function loadConfig() {
     // Existing installs keep their folder; new ones get one named after the plugin.
     downloadsDir: expandHome(env.INSTINCT_DOWNLOADS || (existsSync(expandHome("~/Downloads/Instinct")) ? "~/Downloads/Instinct" : "~/Downloads/" + BRAND)),
     browserIdleMinutes: Number(env.INSTINCT_BROWSER_IDLE_MIN || (browserUse ? 5 : 45)),
-    approval: env.INSTINCT_APPROVAL === "page" ? "page" : "chat"
+    approval: env.INSTINCT_APPROVAL === "page" ? "page" : env.INSTINCT_APPROVAL === "owner" ? "owner" : "chat"
   };
 }
 
@@ -180,7 +180,7 @@ var DaemonClient = class {
         const res = await fetch(`http://127.0.0.1:${info.port}/api/call`, {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${info.token}` },
-          body: JSON.stringify({ session: session2, name, args, nativeApproval: opts.nativeApproval }),
+          body: JSON.stringify({ session: session2, name, args, nativeApproval: opts.nativeApproval, ownerApp: opts.ownerApp }),
           signal: AbortSignal.timeout(opts.timeoutMs ?? 12e4)
         });
         if (res.status === 401) {
@@ -20382,6 +20382,10 @@ var Db = class {
     this.sql = new (sqlite()).DatabaseSync(path);
     this.sql.exec("pragma journal_mode = wal; pragma busy_timeout = 3000;");
     this.sql.exec(schema);
+    try {
+      this.sql.exec("alter table orders add column approval_mode text");
+    } catch {
+    }
   }
   get(key) {
     const row = this.sql.prepare("select value from kv where key = ?").get(key);

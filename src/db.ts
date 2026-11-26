@@ -34,6 +34,8 @@ export class Db {
     this.sql = new (sqlite().DatabaseSync)(path);
     this.sql.exec('pragma journal_mode = wal; pragma busy_timeout = 3000;');
     this.sql.exec(schema);
+    // Who may decide an order: 'owner' orders take no approval from the agent (src/purchases.ts).
+    try { this.sql.exec("alter table orders add column approval_mode text"); } catch { /* already there */ }
   }
 
   get<T>(key: string): T | undefined {

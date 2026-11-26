@@ -85,7 +85,10 @@ export function approvalPage(order: Order | undefined, error?: string) {
 <p class=fine>Codex can only place this exact order, at this store, while this total is on the checkout page.</p>`, true);
 }
 
-export function homePage(items: VaultItemPublic[], orders: Order[], status: { browser: string; cookies: string }) {
+export function homePage(items: VaultItemPublic[], orders: Order[], awaiting: Order[], status: { browser: string; cookies: string }) {
+  const waiting = awaiting.length
+    ? `<h2>Waiting for your approval</h2><ul class=list>${awaiting.map(o => `<li><span>${esc(o.storeName)} · ${esc(money(o.totalCents, o.currency))}</span><form method=post action="/orders/${esc(o.id)}/review"><button type=submit>Review</button></form></li>`).join('')}</ul>`
+    : '';
   const vault = items.length
     ? `<ul class=list>${items.map(i => `<li><span>${esc(i.label)} <span class=pill>${esc(i.kind)}</span></span><form method=post action="/items/${esc(i.id)}/delete"><button class=secondary type=submit>Remove</button></form></li>`).join('')}</ul>`
     : '<p>Empty.</p>';
@@ -93,7 +96,7 @@ export function homePage(items: VaultItemPublic[], orders: Order[], status: { br
     ? `<ul class=list>${orders.map(o => `<li><span>${esc(o.storeName)} · ${esc(money(o.totalCents, o.currency))}</span><span class=pill>${esc(o.status.replace('_', ' '))}</span></li>`).join('')}</ul>`
     : '<p>None yet.</p>';
   return shell('Home', `<h1>${esc(BRAND)} for Codex</h1><p>Browser: ${esc(status.browser)} · Logins: ${esc(status.cookies)}</p>
-<a class=btn href="/new/card">Add a card</a><a class="btn secondary" href="/new/identity">Add an ID document</a>
+${waiting}<a class=btn href="/new/card">Add a card</a><a class="btn secondary" href="/new/identity">Add an ID document</a>
 <h2>Vault</h2>${vault}<h2>Recent purchases</h2>${recent}`, true);
 }
 

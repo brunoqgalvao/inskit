@@ -27,8 +27,11 @@ export type Config = {
   cookieSync: boolean;
   downloadsDir: string;
   browserIdleMinutes: number;
-  /** How purchase approval is asked when Codex shows no native prompt: in the chat (default) or on a local page. */
-  approval: 'chat' | 'page';
+  /**
+   * How purchase approval is asked when Codex shows no native prompt: in the chat (default), on a local page, or in the
+   * owner's own app (owner): the agent cannot record approval, only the owner API (src/owner.ts) or the local page can.
+   */
+  approval: 'chat' | 'page' | 'owner';
 };
 
 export function expandHome(path: string) {
@@ -101,6 +104,6 @@ export function loadConfig(): Config {
     // Existing installs keep their folder; new ones get one named after the plugin.
     downloadsDir: expandHome(env.INSTINCT_DOWNLOADS || (existsSync(expandHome('~/Downloads/Instinct')) ? '~/Downloads/Instinct' : '~/Downloads/' + BRAND)),
     browserIdleMinutes: Number(env.INSTINCT_BROWSER_IDLE_MIN || (browserUse ? 5 : 45)),
-    approval: env.INSTINCT_APPROVAL === 'page' ? 'page' : 'chat',
+    approval: env.INSTINCT_APPROVAL === 'page' ? 'page' : env.INSTINCT_APPROVAL === 'owner' ? 'owner' : 'chat',
   };
 }

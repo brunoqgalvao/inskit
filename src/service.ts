@@ -29,6 +29,9 @@ export function openInBrowser(url: string) {
   return new Promise<boolean>(resolve => execFile(cmd, args, error => resolve(!error)));
 }
 
+/** Per-call options from the MCP shim. ownerApp: this chat runs inside the owner's own app (INSTINCT_APPROVAL=owner). */
+export type CallOpts = { nativeApproval?: boolean; ownerApp?: boolean };
+
 export class Service {
   private locks = new Map<string, Promise<unknown>>();
   private cookieError?: string;
@@ -96,7 +99,7 @@ export class Service {
     finally { if (this.locks.get(session) === next) this.locks.delete(session); }
   }
 
-  async call(session: string, name: string, args: any, opts: { nativeApproval?: boolean } = {}): Promise<ToolResult> {
+  async call(session: string, name: string, args: any, opts: CallOpts = {}): Promise<ToolResult> {
     if (!TOOL_NAMES.has(name) && !name.startsWith('__')) return { content: [{ type: 'text', text: `Unknown tool ${name}` }], isError: true };
     const logged = name === 'browser_type' ? { ...args, text: '[typed text]' } : name === 'vault_challenge_code' ? { ...args, code: '[code]' } : args;
     this.db.audit('tool', { session: session.slice(0, 8), name, args: logged });
@@ -236,26 +239,44 @@ export class Service {
     return `${this.cfg.publicUrl}${path}`;
   }
 
+  /** Approvals, secrets and handovers go through the owner's app: for the whole daemon, or for this chat only. */
+  private owned(opts: CallOpts) {
+    return this.cfg.approval === 'owner' || !!opts.ownerApp;
+  }
+
+  /** The agent browser never opens the daemon's own pages (vault, approval, home): those are for the human. */
+  private refuseOwnPages(url: unknown) {
+    const target = String(url ?? '');
+    let host = '';
+    try { host = new URL(/^[a-z]+:\/\//i.test(target) ? target : `https://${target}`).host; } catch { return; }
+    const own = new Set([`127.0.0.1:${this.cfg.port}`, `localhost:${this.cfg.port}`, `[::1]:${this.cfg.port}`, new URL(this.cfg.publicUrl).host]);
+    if (own.has(host)) throw new Error('That is a private page for the user (vault and approvals). The agent browser does not open it.');
+  }
+
   /** Opens a private page for the human. Returns text for the agent (without the URL when opened locally). */
-  private async present(path: string, what: string) {
+  private async present(path: string, what: string, opts: CallOpts = {}) {
     const url = this.link(path);
-    if (this.cfg.openLinks && (await openInBrowser(url))) return `A secure page for ${what} just opened in the user's browser.`;
+    if (!this.owned(opts) && this.cfg.openLinks && (await openInBrowser(url))) return `A secure page for ${what} just opened in the user's browser.`;
     return `Give the user this link for ${what} (it works once): ${url}`;
   }
 
   /** Next step after a proposal when no native prompt answered: ask in chat, or open the approval page. */
-  private async askApproval(order: Order) {
+  private async askApproval(order: Order, opts: CallOpts = {}) {
+    // No page token and no chat approval here: the agent only hands the order id to the owner's app and waits.
+    if (order.approvalMode === 'owner') {
+      return `The owner approves this in their own app, not in chat: you cannot approve it yourself. Now pass order_id="${order.id}" to the purchase approval tool of the app you run in (in mesa: purchase_request), then call purchase_wait with order_id="${order.id}".`;
+    }
     const token = this.purchases.issueToken(order.id);
     if (this.cfg.approval === 'page') {
-      return `${await this.present(`/a/${token}`, 'approving this purchase')} Tell the user in one line, then call purchase_wait with order_id="${order.id}".`;
+      return `${await this.present(`/a/${token}`, 'approving this purchase', opts)} Tell the user in one line, then call purchase_wait with order_id="${order.id}".`;
     }
     return `Approval in chat: show the user this order (items, total, delivery date, address, card brand and last 4) and ask whether to buy it. End your turn and wait for their reply; do not call purchase_wait. When their next message answers it, call purchase_approve with order_id="${order.id}", approve, and their exact words. If they prefer to approve on a page, give them this one-time link: ${this.link(`/a/${token}`)}`;
   }
 
-  private async dispatch(session: string, name: string, a: any, opts: { nativeApproval?: boolean }): Promise<ToolResult | string> {
+  private async dispatch(session: string, name: string, a: any, opts: CallOpts): Promise<ToolResult | string> {
     const b = this.browser;
     switch (name) {
-      case 'browser_navigate': return b.navigate(session, a.url);
+      case 'browser_navigate': this.refuseOwnPages(a.url); return b.navigate(session, a.url);
       case 'browser_snapshot': return b.snapshot(session, a.max_chars);
       case 'browser_find': return b.find(session, a.query);
       case 'browser_read_text': return b.text(session, a.max_chars);
@@ -267,7 +288,7 @@ export class Service {
       case 'browser_press_key': return b.pressKey(session, a.key);
       case 'browser_back': return b.back(session);
       case 'browser_wait': return b.wait(session, a.seconds, a.text);
-      case 'browser_tabs': return b.tabs(session, a.action, a.index, a.url);
+      case 'browser_tabs': if (a.url) this.refuseOwnPages(a.url); return b.tabs(session, a.action, a.index, a.url);
       case 'browser_screenshot': return { content: [{ type: 'image', data: await b.screenshot(session), mimeType: 'image/jpeg' }] };
       case 'browser_upload': return b.upload(session, a.ref, a.paths);
       case 'browser_downloads':
@@ -278,7 +299,7 @@ export class Service {
         const started = Date.now();
         const r = await runDelegate(model, {
           snapshot: () => b.snapshot(session, 9_000),
-          navigate: async url => { await b.navigate(session, url); },
+          navigate: async url => { this.refuseOwnPages(url); await b.navigate(session, url); },
           click: async ref => { await b.click(session, ref); },
           type: async (ref, text, submit) => {
             if (containsCardNumber(text)) throw new Error('Card data only goes in through the vault.');
@@ -301,6 +322,9 @@ export class Service {
       case 'browser_hand_over': {
         const url = await b.show(session);
         this.db.audit('handover', { reason: a.reason, url });
+        if (this.owned(opts) && this.cfg.browserUse && b.liveUrl) {
+          return `The cloud browser is ready for the owner on ${hostOf(url)}. Do not paste a link in chat: call the browser handover tool of the app you run in (in mesa: browser_handoff) with this reason, so the owner gets the live browser there: ${a.reason}. Wait for their reply, then take a fresh snapshot.`;
+        }
         if (this.cfg.browserUse) return b.liveUrl
           ? `Ask the user to open the cloud browser at ${b.liveUrl} and complete this step: ${a.reason}. Wait for their reply, then take a fresh snapshot.`
           : 'The cloud browser did not return a live preview link. Ask the user to open its session in Browser Use Cloud.';
@@ -340,7 +364,10 @@ export class Service {
       }
       case 'vault_request': {
         const request = this.vault.createRequest({ kind: a.kind as RequestKind, purpose: a.purpose, origin: a.origin, itemId: a.item_id });
-        const shown = await this.present(`/v/${request.token}`, a.kind === 'cvv' ? 'the CVV' : a.kind);
+        if (this.owned(opts)) {
+          return `Request ${request.id}. The owner types this in their own app, never in chat. Now pass request_id="${request.id}" to the secret request tool of the app you run in (in mesa: secret_request), then call vault_wait with request_id="${request.id}".`;
+        }
+        const shown = await this.present(`/v/${request.token}`, a.kind === 'cvv' ? 'the CVV' : a.kind, opts);
         return `${shown} Request ${request.id}. Tell the user in one line, then call vault_wait with request_id="${request.id}".`;
       }
       case 'vault_wait': {
@@ -386,7 +413,7 @@ export class Service {
         if (typeof a.evidence !== 'string' || a.evidence.length < 4 || a.evidence.length > 200 || !visible.includes(a.evidence) || a.evidence.includes('[hidden by vault]')) throw new Error('Evidence is not visible on the current page. Take a fresh snapshot.');
         const r = this.vault.loginFeedback(item.id, { state: a.state, reason: a.reason });
         this.loginSessions.set(session, item.id);
-        return `Login status: ${r.login!.state}. Request ${r.id}. ${a.show_page ? await this.present(`/v/${r.token}`, 'login status') : 'The vault page updates automatically.'}`;
+        return `Login status: ${r.login!.state}. Request ${r.id}. ${a.show_page ? await this.present(`/v/${r.token}`, 'login status', opts) : 'The vault page updates automatically.'}`;
       }
       case 'vault_login_challenge': {
         const url = await b.currentUrl(session);
@@ -397,7 +424,7 @@ export class Service {
         // A login saved earlier has no vault page open (or its page expired): open one so the code field is visible.
         const where = this.vault.loginPageOpen(a.item_id)
           ? 'The verification field appeared on the vault page the user already has open.'
-          : await this.present(`/v/${request.token}`, a.method === 'app' ? 'confirming the app approval' : 'typing the verification code');
+          : await this.present(`/v/${request.token}`, a.method === 'app' ? 'confirming the app approval' : 'typing the verification code', opts);
         return `${where} challenge_id="${challenge.id}". Call vault_challenge_wait now; do not ask for a code in chat.`;
       }
       case 'vault_challenge_code': {
@@ -457,21 +484,22 @@ export class Service {
       }
 
       case 'purchase_propose': {
+        const owned = this.owned(opts);
         const { order } = this.purchases.propose(a.store_name, a.store_url, a.currency, {
           items: a.items.map((i: any) => ({ name: i.name, quantity: i.quantity, unitPriceCents: i.unit_price_cents })),
           subtotalCents: a.subtotal_cents, shippingCents: a.shipping_cents, taxCents: a.tax_cents ?? 0, discountCents: a.discount_cents ?? 0,
           totalCents: a.total_cents, shippingMethod: a.shipping_method, deliveryEstimate: a.delivery_estimate,
           address: a.address, paymentMethod: a.payment_method, notes: a.notes,
-        });
+        }, owned ? 'owner' : undefined);
         const summary = `${order.storeName}: ${order.quote.items.map(i => `${i.quantity}× ${i.name}`).join(', ')} — total ${money(order.totalCents, order.currency)}, ${order.quote.paymentMethod}, delivery ${order.quote.deliveryEstimate} to ${order.quote.address}`;
         const structured = { orderId: order.id, summary };
-        if (opts.nativeApproval) return { content: [{ type: 'text', text: `Proposal ${order.id}: ${summary}` }], structuredContent: structured };
-        return { content: [{ type: 'text', text: `Proposal ${order.id}: ${summary}. ${await this.askApproval(order)}` }], structuredContent: structured };
+        if (opts.nativeApproval && !owned) return { content: [{ type: 'text', text: `Proposal ${order.id}: ${summary}` }], structuredContent: structured };
+        return { content: [{ type: 'text', text: `Proposal ${order.id}: ${summary}. ${await this.askApproval(order, opts)}` }], structuredContent: structured };
       }
       case '__open_approval': {
         const order = this.purchases.get(a.order_id);
         if (!order || order.status !== 'awaiting_approval') throw new Error('No proposal awaiting approval.');
-        return this.askApproval(order);
+        return this.askApproval(order, opts);
       }
       case '__decide': {
         const order = this.purchases.decide(a.order_id, !!a.approve, a.via ?? 'native prompt');
@@ -493,6 +521,7 @@ export class Service {
           if (order.status === 'approved') return `Approved by the user. Fill payment if needed, check the total is still ${money(order.totalCents, order.currency)}, then purchase_submit.`;
           if (order.status === 'rejected') return 'The user declined. Do not buy. Ask what they want instead.';
           if (order.status !== 'awaiting_approval') return `Order is ${order.status}${order.failure ? `: ${order.failure}` : ''}.`;
+          if (Date.now() > deadline && order.approvalMode === 'owner') return `No decision yet: the owner has not answered in their app. Call purchase_wait again; do not ask for approval in chat.`;
           if (Date.now() > deadline) return `No decision yet. Call purchase_wait again, or ask the user in chat and record their answer with purchase_approve (order_id="${order.id}").`;
           await sleep(800);
         }

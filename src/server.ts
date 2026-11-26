@@ -12,6 +12,8 @@ import { TOOLS, type ToolResult } from './tools.ts';
 const cfg = loadConfig();
 const client = new DaemonClient(cfg);
 const session = randomUUID();
+/** This chat runs inside the owner's own app: approvals and secrets go there, never to chat, a prompt or a local page. */
+const ownerApp = process.env.INSTINCT_APPROVAL === 'owner';
 
 const INSTRUCTIONS = `${BRAND} gives you a Browser Use Cloud or local browser (check agent_status), with reusable website logins, a vault for cards, passwords and ID documents that you never see, and a purchase gate.
 Use these browser_* tools for any task on the web that needs the user's accounts, forms, checkout or downloads. Never ask for passwords, card numbers, CVV or ID numbers in chat: use vault_request. Never pay without purchase_propose and the user's approval. Read the "inskit" skill for the full playbook.`;
@@ -28,7 +30,7 @@ server.server.oninitialized = () => {
 };
 
 function supportsElicitation() {
-  if (process.env.INSTINCT_NATIVE_APPROVAL === '0') return false;
+  if (ownerApp || process.env.INSTINCT_NATIVE_APPROVAL === '0') return false;
   return !!(server.server.getClientCapabilities() as any)?.elicitation;
 }
 
@@ -77,7 +79,7 @@ for (const tool of TOOLS) {
           ? 'The user approved in Codex. Fill payment if needed, check the total is unchanged, then purchase_submit.'
           : 'The user declined. Do not buy. Ask what they want instead.');
       }
-      return await client.call(session, tool.name, args, { timeoutMs });
+      return await client.call(session, tool.name, args, { timeoutMs, ownerApp });
     } catch (error) {
       return { content: [{ type: 'text', text: `Error: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
     }

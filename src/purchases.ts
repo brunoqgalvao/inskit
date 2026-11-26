@@ -35,6 +35,8 @@ export type Order = {
   storeOrderNumber?: string;
   paidTotalCents?: number;
   failure?: string;
+  /** owner: only the owner (their app through the owner API, or the local approval page) decides, never the agent. */
+  approvalMode?: 'owner';
   createdAt: number;
 };
 
@@ -62,7 +64,7 @@ function rowToOrder(r: any): Order {
     approvalEvidence: r.approval_evidence ?? undefined, approvedAt: r.approved_at ?? undefined,
     submittedAt: r.submitted_at ?? undefined, confirmedAt: r.confirmed_at ?? undefined,
     storeOrderNumber: r.store_order_number ?? undefined, paidTotalCents: r.paid_total_cents ?? undefined,
-    failure: r.failure ?? undefined, createdAt: r.created_at,
+    failure: r.failure ?? undefined, approvalMode: r.approval_mode === 'owner' ? 'owner' : undefined, createdAt: r.created_at,
   };
 }
 
@@ -97,7 +99,11 @@ export class Purchases {
     return this.get(id)!;
   }
 
-  propose(storeName: string, storeUrl: string, currency: string, quote: Quote) {
+  awaiting() {
+    return this.list(20).filter(o => o.status === 'awaiting_approval');
+  }
+
+  propose(storeName: string, storeUrl: string, currency: string, quote: Quote, approvalMode?: 'owner') {
     const host = hostOf(storeUrl);
     if (!host) throw new Error('Invalid store_url');
     if (!quote.items.length) throw new Error('List the items.');
@@ -108,11 +114,11 @@ export class Purchases {
     this.db.sql.prepare(`update orders set status = 'cancelled', failure = 'replaced by a newer proposal', updated_at = ? where status in ('awaiting_approval', 'approved') and store_host = ?`).run(Date.now(), host);
     const id = 'ord_' + randomBytes(5).toString('hex');
     const now = Date.now();
-    this.db.sql.prepare(`insert into orders (id, status, store_name, store_url, store_host, currency, quote, total_cents, created_at, updated_at)
-      values (?, 'awaiting_approval', ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(id, storeName, storeUrl, host, currency.toUpperCase(), JSON.stringify(quote), quote.totalCents, now, now);
+    this.db.sql.prepare(`insert into orders (id, status, store_name, store_url, store_host, currency, quote, total_cents, approval_mode, created_at, updated_at)
+      values (?, 'awaiting_approval', ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(id, storeName, storeUrl, host, currency.toUpperCase(), JSON.stringify(quote), quote.totalCents, approvalMode ?? null, now, now);
     this.db.audit('order.proposed', { id, storeName, host, totalCents: quote.totalCents, currency });
-    return { order: this.get(id)!, token: this.issueToken(id) };
+    return { order: this.get(id)! };
   }
 
   /** A fresh approval-page token for an order still awaiting approval. */
@@ -127,10 +133,17 @@ export class Purchases {
     return id ? this.get(id) : undefined;
   }
 
-  /** Called by the approval page, a native Codex approval prompt, or purchase_approve with the user's chat reply. */
-  decide(id: string, approve: boolean, evidence: string) {
+  /**
+   * by owner: the approval page or the owner API. by agent: a native Codex approval prompt, or purchase_approve with the
+   * user's chat reply; refused for an order proposed in owner mode, whatever the session that asks.
+   */
+  decide(id: string, approve: boolean, evidence: string, by: 'agent' | 'owner' = 'agent') {
     const order = this.get(id);
     if (!order) throw new Error('Order not found');
+    if (order.approvalMode === 'owner' && by !== 'owner') {
+      this.db.audit('order.self_approval_refused', { id, approve });
+      throw new Error('Only the owner decides this order, in their own app. You cannot record the approval. Call purchase_wait.');
+    }
     if (order.status !== 'awaiting_approval') throw new Error(`Order is ${order.status}, not awaiting approval.`);
     for (const [token, orderId] of this.approvalTokens) if (orderId === id) this.approvalTokens.delete(token);
     return approve
